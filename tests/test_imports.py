@@ -1,4 +1,4 @@
-from hardware.container import open_container
+from container import open_container
 
 
 def test_public_imports_are_exposed():

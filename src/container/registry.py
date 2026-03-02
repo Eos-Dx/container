@@ -16,7 +16,7 @@ class VersionSpec:
 VERSION_REGISTRY = {
     "0_2": VersionSpec(
         normalized_version="0_2",
-        module_path="hardware.container.v0_2",
+        module_path="container.v0_2",
     ),
 }
 

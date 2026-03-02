@@ -8,11 +8,11 @@ Versioning:
 
 Usage:
     # Auto-detect version and open container
-    from hardware.container import open_container
+    from container import open_container
     container = open_container('path/to/file.h5')
     
     # Manual version specification
-    from hardware.container.v0_2 import SessionContainer
+    from container.v0_2 import SessionContainer
     container = SessionContainer.open('path/to/file.h5')
 """
 

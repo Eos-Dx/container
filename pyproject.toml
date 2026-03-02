@@ -18,5 +18,8 @@ package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
-include = ["hardware.container*"]
+include = ["container*"]
 namespaces = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

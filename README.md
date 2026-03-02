@@ -1,6 +1,6 @@
 # eosdx-container
 
-Standalone `hardware.container` package extracted from `xrd-analysis`.
+Standalone `container` package extracted from `xrd-analysis`.
 
 ## Layout
 
@@ -11,8 +11,8 @@ Standalone `hardware.container` package extracted from `xrd-analysis`.
 
 This repo provides versioned HDF5 container support used by DiFRA:
 
-- `hardware.container.v0_1`
-- `hardware.container.v0_2`
+- `container.v0_1`
+- `container.v0_2`
 
 ## Development
 
