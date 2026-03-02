@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "eosdx-container"
+version = "0.1.0"
+description = "Versioned HDF5 container support for Eos-Dx"
+readme = "README.md"
+requires-python = ">=3.7"
+dependencies = [
+  "h5py",
+  "numpy",
+]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["hardware.container*"]
+namespaces = true
