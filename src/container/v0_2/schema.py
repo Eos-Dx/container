@@ -222,6 +222,15 @@ ATTR_HOLDER_DIAMETER_MM = "holder_diameter_mm"
 ATTR_LOCKED = "locked"
 ATTR_LOCKED_BY = "locked_by"
 ATTR_LOCKED_TIMESTAMP = "lock_timestamp"
+ATTR_LOCK_STATUS = "lock_status"
+ATTR_TRANSFER_STATUS = "transfer_status"
+ATTR_TRANSFER_TIMESTAMP = "transfer_timestamp"
+
+LOCK_STATUS_LOCKED = "locked"
+LOCK_STATUS_UNLOCKED = "unlocked"
+
+TRANSFER_STATUS_SENT = "sent"
+TRANSFER_STATUS_UNSENT = "unsent"
 
 # ================== Dataset Names ==========================
 DATASET_RAW_SIGNAL = "raw_signal"

@@ -342,6 +342,9 @@ def create_session_container(
         runtime.attrs["measurement_counter"] = 0
         runtime.attrs[schema.ATTR_PRODUCER_SOFTWARE] = producer_software
         runtime.attrs[schema.ATTR_PRODUCER_VERSION] = producer_version
+        runtime.attrs[schema.ATTR_LOCKED] = False
+        runtime.attrs[schema.ATTR_LOCK_STATUS] = schema.LOCK_STATUS_UNLOCKED
+        runtime.attrs[schema.ATTR_TRANSFER_STATUS] = schema.TRANSFER_STATUS_UNSENT
 
     refresh_human_summary(file_path)
     append_runtime_log(

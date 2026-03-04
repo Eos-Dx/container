@@ -76,6 +76,9 @@ def create_technical_container(
         attrs={
             schema.ATTR_PRODUCER_SOFTWARE: producer_software,
             schema.ATTR_PRODUCER_VERSION: producer_version,
+            schema.ATTR_LOCKED: False,
+            schema.ATTR_LOCK_STATUS: schema.LOCK_STATUS_UNLOCKED,
+            schema.ATTR_TRANSFER_STATUS: schema.TRANSFER_STATUS_UNSENT,
         },
     )
 

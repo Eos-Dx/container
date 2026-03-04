@@ -83,6 +83,11 @@ def create_empty_container(
             for key, value in root_attrs.items():
                 f.attrs[key] = value
 
+        # v0.2 containers always carry explicit lifecycle state flags.
+        f.attrs[schema.ATTR_LOCKED] = False
+        f.attrs[schema.ATTR_LOCK_STATUS] = schema.LOCK_STATUS_UNLOCKED
+        f.attrs[schema.ATTR_TRANSFER_STATUS] = schema.TRANSFER_STATUS_UNSENT
+
         # Always create NeXus entry.
         entry = f.create_group(schema.GROUP_ENTRY)
         entry.attrs[schema.ATTR_NX_CLASS] = schema.NX_CLASS_ENTRY

@@ -60,6 +60,76 @@ def _resolve_archive_operator_token(container_path: Path) -> str:
     return "unknown"
 
 
+def _set_container_lifecycle_state(
+    container_file: Path,
+    *,
+    locked: Optional[bool] = None,
+    lock_timestamp: Optional[str] = None,
+    locked_by: Optional[str] = None,
+    transfer_status: Optional[str] = None,
+    transfer_timestamp: Optional[str] = None,
+    clear_lock_metadata: bool = False,
+    clear_transfer_timestamp: bool = False,
+) -> None:
+    """Mirror lifecycle state attrs at root and runtime level."""
+    with h5py.File(container_file, "a") as f:
+        runtime = f.get(schema.GROUP_RUNTIME)
+
+        def _apply_attrs(target) -> None:
+            if target is None:
+                return
+
+            if locked is not None:
+                target.attrs[schema.ATTR_LOCKED] = bool(locked)
+                target.attrs[schema.ATTR_LOCK_STATUS] = (
+                    schema.LOCK_STATUS_LOCKED if locked else schema.LOCK_STATUS_UNLOCKED
+                )
+                if lock_timestamp is not None:
+                    target.attrs[schema.ATTR_LOCKED_TIMESTAMP] = lock_timestamp
+                    # Keep legacy root attrs for older callers/tests.
+                    if target is f:
+                        target.attrs["locked_timestamp"] = lock_timestamp
+                if locked_by:
+                    target.attrs[schema.ATTR_LOCKED_BY] = locked_by
+                    if target is f:
+                        target.attrs["locked_by"] = locked_by
+                elif clear_lock_metadata:
+                    for key in (schema.ATTR_LOCKED_BY, "locked_by"):
+                        if key in target.attrs:
+                            del target.attrs[key]
+
+                if clear_lock_metadata:
+                    for key in (schema.ATTR_LOCKED_TIMESTAMP, "locked_timestamp"):
+                        if key in target.attrs:
+                            del target.attrs[key]
+
+            if transfer_status is not None:
+                target.attrs[schema.ATTR_TRANSFER_STATUS] = str(transfer_status)
+                if transfer_timestamp is not None:
+                    target.attrs[schema.ATTR_TRANSFER_TIMESTAMP] = str(transfer_timestamp)
+                elif clear_transfer_timestamp and schema.ATTR_TRANSFER_TIMESTAMP in target.attrs:
+                    del target.attrs[schema.ATTR_TRANSFER_TIMESTAMP]
+
+        _apply_attrs(f)
+        _apply_attrs(runtime)
+
+
+def _run_with_write_access(container_file: Path, callback) -> None:
+    """Temporarily add user-write permission when updating a locked container."""
+    current_perms = container_file.stat().st_mode
+    restore_perms = None
+
+    if not (current_perms & stat.S_IWUSR):
+        restore_perms = current_perms
+        os.chmod(container_file, current_perms | stat.S_IWUSR)
+
+    try:
+        callback()
+    finally:
+        if restore_perms is not None:
+            os.chmod(container_file, restore_perms)
+
+
 # ==================== Container Locking ====================
 
 def is_container_locked(container_file: Path) -> bool:
@@ -86,6 +156,47 @@ def is_container_locked(container_file: Path) -> bool:
     except Exception as e:
         logger.error(f"Could not check lock status for {container_file}: {e}")
         return False
+
+
+def get_transfer_status(container_file: Path) -> str:
+    """Return explicit transfer status for a container."""
+    try:
+        with h5py.File(container_file, "r") as f:
+            runtime = f.get(schema.GROUP_RUNTIME)
+            if runtime is not None and schema.ATTR_TRANSFER_STATUS in runtime.attrs:
+                return _decode_attr(runtime.attrs.get(schema.ATTR_TRANSFER_STATUS)) or schema.TRANSFER_STATUS_UNSENT
+            return _decode_attr(
+                f.attrs.get(schema.ATTR_TRANSFER_STATUS, schema.TRANSFER_STATUS_UNSENT)
+            ) or schema.TRANSFER_STATUS_UNSENT
+    except Exception as e:
+        logger.error(f"Could not read transfer status for {container_file}: {e}")
+        return schema.TRANSFER_STATUS_UNSENT
+
+
+def mark_container_transferred(
+    container_file: Path,
+    sent: bool,
+    *,
+    timestamp: Optional[str] = None,
+) -> None:
+    """Mark container as sent or unsent."""
+    container_file = Path(container_file)
+    if not container_file.exists():
+        raise FileNotFoundError(f"Container not found: {container_file}")
+
+    transfer_status = (
+        schema.TRANSFER_STATUS_SENT if sent else schema.TRANSFER_STATUS_UNSENT
+    )
+    transfer_timestamp = timestamp or (time.strftime("%Y-%m-%d %H:%M:%S") if sent else None)
+    _run_with_write_access(
+        container_file,
+        lambda: _set_container_lifecycle_state(
+            container_file,
+            transfer_status=transfer_status,
+            transfer_timestamp=transfer_timestamp,
+            clear_transfer_timestamp=not sent,
+        ),
+    )
 
 
 def lock_container(container_file: Path, user_id: Optional[str] = None) -> None:
@@ -118,18 +229,13 @@ def lock_container(container_file: Path, user_id: Optional[str] = None) -> None:
     
     # Step 1: Set HDF5 attribute
     try:
-        with h5py.File(container_file, 'a') as f:
-            timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
-            f.attrs['locked'] = True
-            f.attrs['locked_timestamp'] = timestamp
-            if user_id:
-                f.attrs['locked_by'] = user_id
-            runtime = f.get(schema.GROUP_RUNTIME)
-            if runtime is not None:
-                runtime.attrs[schema.ATTR_LOCKED] = True
-                runtime.attrs[schema.ATTR_LOCKED_TIMESTAMP] = timestamp
-                if user_id:
-                    runtime.attrs[schema.ATTR_LOCKED_BY] = user_id
+        timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+        _set_container_lifecycle_state(
+            container_file,
+            locked=True,
+            lock_timestamp=timestamp,
+            locked_by=user_id,
+        )
         
         logger.info(f"Set locked attribute for: {container_file}")
     except Exception as e:
@@ -179,18 +285,11 @@ def unlock_container(container_file: Path) -> None:
     
     # Step 2: Remove HDF5 locked attribute
     try:
-        with h5py.File(container_file, 'a') as f:
-            if 'locked' in f.attrs:
-                del f.attrs['locked']
-            if 'locked_timestamp' in f.attrs:
-                del f.attrs['locked_timestamp']
-            if 'locked_by' in f.attrs:
-                del f.attrs['locked_by']
-            runtime = f.get(schema.GROUP_RUNTIME)
-            if runtime is not None:
-                for key in (schema.ATTR_LOCKED, schema.ATTR_LOCKED_TIMESTAMP, schema.ATTR_LOCKED_BY):
-                    if key in runtime.attrs:
-                        del runtime.attrs[key]
+        _set_container_lifecycle_state(
+            container_file,
+            locked=False,
+            clear_lock_metadata=True,
+        )
         
         logger.info(f"Removed locked attribute for: {container_file}")
     except Exception as e:
@@ -563,20 +662,23 @@ def lock_technical_container(
     
     # Step 1: Set all HDF5 attributes (including notes) BEFORE read-only
     try:
+        timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+        _set_container_lifecycle_state(
+            tech_file,
+            locked=True,
+            lock_timestamp=timestamp,
+            locked_by=locked_by,
+        )
         with h5py.File(tech_file, 'a') as f:
-            timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
-            f.attrs['locked'] = True
-            f.attrs['locked_timestamp'] = timestamp
-            f.attrs['locked_by'] = locked_by
-            if notes:
-                f.attrs['locked_notes'] = notes
+            f.attrs['locked_notes'] = notes if notes else f.attrs.get('locked_notes', '')
             runtime = f.get(schema.GROUP_RUNTIME)
             if runtime is not None:
-                runtime.attrs[schema.ATTR_LOCKED] = True
-                runtime.attrs[schema.ATTR_LOCKED_TIMESTAMP] = timestamp
-                runtime.attrs[schema.ATTR_LOCKED_BY] = locked_by
                 if notes:
                     runtime.attrs['locked_notes'] = notes
+                elif 'locked_notes' in runtime.attrs:
+                    del runtime.attrs['locked_notes']
+            if not notes and 'locked_notes' in f.attrs:
+                del f.attrs['locked_notes']
         
         logger.info(f"Set locked attributes for: {tech_file}")
     except Exception as e:
