@@ -244,9 +244,12 @@ def add_technical_event(
             # Find associated RAW files: .txt (ASCII data) and .dsc (descriptor)
             # Skip .npy as it's processed data already in raw_signal dataset
             associated_files = []
-            for ext in [".txt", ".dsc"]:
-                candidate = source_dir / f"{base_name}{ext}"
-                if candidate.exists():
+            for candidate in (
+                source_path,
+                Path(str(source_path) + ".dsc"),
+                source_path.with_suffix(".dsc"),
+            ):
+                if candidate.exists() and candidate not in associated_files:
                     associated_files.append(candidate)
             
             # Store each raw file in blob/ subfolder
@@ -262,7 +265,11 @@ def add_technical_event(
                     
                     # Determine file format
                     ext = file_to_store.suffix.lower()
-                    file_format = ext[1:] if ext else "unknown"  # Remove leading dot
+                    file_format = (
+                        "dsc"
+                        if file_to_store.name.lower().endswith(".txt.dsc")
+                        else (ext[1:] if ext else "unknown")
+                    )
                     
                     # Create blob dataset inside blob/ group
                     blob_dataset_path = f"{blob_group_path}/raw_{file_format}"
