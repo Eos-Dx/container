@@ -508,7 +508,14 @@ def generate_from_aux_table(
             )
 
     if isinstance(distances_cm, dict):
-        root_distance_cm = list(distances_cm.values())[0]
+        root_distance_cm = next(
+            (
+                distances_cm[key]
+                for key in ("PRIMARY", "SAXS", "DET_PRIMARY", "DET_SAXS")
+                if key in distances_cm
+            ),
+            distances_cm[sorted(distances_cm.keys())[0]],
+        )
     else:
         root_distance_cm = distances_cm
 

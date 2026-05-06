@@ -64,3 +64,25 @@ def test_created_technical_container_filename_matches_root_distance_attr(
     assert f"_{expected_token}_" in file_path
     with h5py.File(file_path, "r") as h5f:
         assert float(h5f.attrs[schema.ATTR_DISTANCE_CM]) == distance_cm
+
+
+def test_generate_from_aux_table_uses_primary_distance_as_root(tmp_path):
+    raw_path = tmp_path / "raw.npy"
+    import numpy as np
+
+    np.save(raw_path, np.ones((2, 2), dtype=np.float32))
+    _container_id, file_path = technical_container.generate_from_aux_table(
+        folder=tmp_path,
+        aux_measurements={"DARK": {"PRIMARY": str(raw_path)}},
+        poni_data={},
+        detector_config=[
+            {"id": "det_secondary", "alias": "SECONDARY"},
+            {"id": "det_primary", "alias": "PRIMARY"},
+        ],
+        active_detector_ids=["det_primary", "det_secondary"],
+        distances_cm={"SECONDARY": 17.0, "PRIMARY": 2.0},
+    )
+
+    assert "_2cm_" in file_path
+    with h5py.File(file_path, "r") as h5f:
+        assert float(h5f.attrs[schema.ATTR_DISTANCE_CM]) == 2.0
