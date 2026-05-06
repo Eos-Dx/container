@@ -50,6 +50,17 @@ def test_technical_event_stores_acquisition_metadata(tmp_path):
         assert float(det_group.attrs[schema.ATTR_THICKNESS]) == 1.3
 
 
+def test_technical_container_filename_uses_compact_integer_distance(tmp_path):
+    _container_id, file_path = technical_container.create_technical_container(
+        folder=tmp_path,
+        distance_cm=17.0,
+    )
+
+    filename = Path(file_path).name
+    assert "_17cm_" in filename
+    assert "17p00cm" not in filename
+
+
 def test_technical_event_stores_txt_dsc_sidecar_as_raw_dsc(tmp_path):
     raw_dir = Path(tmp_path) / "raw"
     raw_dir.mkdir()

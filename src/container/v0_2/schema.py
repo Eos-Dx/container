@@ -312,7 +312,12 @@ def format_technical_container_filename(
     if distance_cm is None:
         return f"technical_{container_id}_{date_part}.nxs.h5"
 
-    distance_token = f"{float(distance_cm):.2f}".replace(".", "p").replace("-", "m")
+    distance_value = float(distance_cm)
+    if abs(distance_value - round(distance_value)) < 1e-6:
+        distance_token = str(int(round(distance_value)))
+    else:
+        distance_token = f"{distance_value:.6f}".rstrip("0").rstrip(".")
+        distance_token = distance_token.replace(".", "p").replace("-", "m")
     return f"technical_{container_id}_{distance_token}cm_{date_part}.nxs.h5"
 
 
