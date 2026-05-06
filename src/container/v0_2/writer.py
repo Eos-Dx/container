@@ -3,7 +3,7 @@
 import json
 import time
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import h5py
 import numpy as np
@@ -13,6 +13,58 @@ from . import schema, utils
 
 def _string_list_dtype():
     return h5py.string_dtype(encoding="utf-8")
+
+
+def _raw_payload_format(path: Path) -> str:
+    if path.name.lower().endswith(".txt.dsc"):
+        return "dsc"
+    ext = path.suffix.lower()
+    return ext[1:] if ext else "unknown"
+
+
+def _associated_raw_payload_files(source_path: Path) -> List[Path]:
+    candidates = [source_path]
+
+    if source_path.suffix.lower() == ".npy":
+        txt_path = source_path.with_suffix(".txt")
+        candidates.extend(
+            [
+                txt_path,
+                Path(str(txt_path) + ".dsc"),
+                source_path.with_suffix(".dsc"),
+                Path(str(source_path) + ".dsc"),
+            ]
+        )
+    else:
+        candidates.extend(
+            [
+                Path(str(source_path) + ".dsc"),
+                source_path.with_suffix(".dsc"),
+            ]
+        )
+
+    associated_files = []
+    seen_paths = set()
+    seen_formats = set()
+    for candidate in candidates:
+        if not candidate.exists():
+            continue
+        resolved = candidate.resolve()
+        file_format = _raw_payload_format(candidate)
+        if resolved in seen_paths or file_format in seen_formats:
+            continue
+        seen_paths.add(resolved)
+        seen_formats.add(file_format)
+        associated_files.append(candidate)
+    return associated_files
+
+
+def _raw_blob_key_from_path(path: Path) -> str:
+    return f"raw_{_raw_payload_format(path)}"
+
+
+def _is_path_like_payload(value: Any) -> bool:
+    return isinstance(value, (str, Path))
 
 
 def _read_string_list_attr(attrs, name: str) -> List[str]:
@@ -417,7 +469,7 @@ def add_detector_data_with_blobs(
     file_path: Union[str, Path],
     detector_path: str,
     processed_signal: np.ndarray,
-    raw_files: Dict[str, bytes],
+    raw_files: Dict[str, Any],
     poni_ref_path: Optional[str] = None,
 ) -> None:
     """Add detector data and raw blobs."""
@@ -438,13 +490,30 @@ def add_detector_data_with_blobs(
     utils.create_group_if_missing(file_path, blob_group)
     _set_nx_class(file_path, blob_group, schema.NX_CLASS_COLLECTION)
 
+    raw_payloads: Dict[str, Tuple[Any, Dict[str, Any]]] = {}
     for blob_key, content in (raw_files or {}).items():
+        if _is_path_like_payload(content):
+            source_path = Path(content)
+            if source_path.exists():
+                for raw_path in _associated_raw_payload_files(source_path):
+                    payload_key = _raw_blob_key_from_path(raw_path)
+                    raw_payloads[payload_key] = (
+                        raw_path.read_bytes(),
+                        {
+                            "source_filename": raw_path.name,
+                            "file_format": _raw_payload_format(raw_path),
+                            "blob_size_bytes": raw_path.stat().st_size,
+                        },
+                    )
+                continue
+
         if not blob_key.startswith("raw_"):
-            import os
+            path_key = Path(str(blob_key))
+            blob_key = _raw_blob_key_from_path(path_key)
 
-            _, ext = os.path.splitext(blob_key)
-            blob_key = f"raw_{ext[1:] if ext else 'unknown'}"
+        raw_payloads[blob_key] = (content, {})
 
+    for blob_key, (content, attrs) in raw_payloads.items():
         blob_path = f"{blob_group}/{blob_key}"
         if isinstance(content, bytes):
             blob_data = np.frombuffer(content, dtype=np.uint8)
@@ -457,6 +526,7 @@ def add_detector_data_with_blobs(
             file_path=file_path,
             dataset_path=blob_path,
             data=blob_data,
+            attrs=attrs or None,
             compression="gzip",
             compression_opts=schema.COMPRESSION_BLOB_MAX,
             overwrite=True,

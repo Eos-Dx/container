@@ -11,6 +11,50 @@ import numpy as np
 from . import schema, utils
 
 
+def _raw_payload_format(path: Path) -> str:
+    if path.name.lower().endswith(".txt.dsc"):
+        return "dsc"
+    ext = path.suffix.lower()
+    return ext[1:] if ext else "unknown"
+
+
+def _associated_raw_payload_files(source_path: Path) -> List[Path]:
+    candidates = [source_path]
+
+    if source_path.suffix.lower() == ".npy":
+        txt_path = source_path.with_suffix(".txt")
+        candidates.extend(
+            [
+                txt_path,
+                Path(str(txt_path) + ".dsc"),
+                source_path.with_suffix(".dsc"),
+                Path(str(source_path) + ".dsc"),
+            ]
+        )
+    else:
+        candidates.extend(
+            [
+                Path(str(source_path) + ".dsc"),
+                source_path.with_suffix(".dsc"),
+            ]
+        )
+
+    associated_files = []
+    seen_paths = set()
+    seen_formats = set()
+    for candidate in candidates:
+        if not candidate.exists():
+            continue
+        resolved = candidate.resolve()
+        file_format = _raw_payload_format(candidate)
+        if resolved in seen_paths or file_format in seen_formats:
+            continue
+        seen_paths.add(resolved)
+        seen_formats.add(file_format)
+        associated_files.append(candidate)
+    return associated_files
+
+
 def create_technical_container(
     folder: Union[str, Path],
     distance_cm: float,
@@ -274,17 +318,7 @@ def add_technical_event(
         source_file = meas_data.get("source_file")
         if source_file and os.path.exists(source_file):
             source_path = Path(source_file)
-            base_name = source_path.stem
-            source_dir = source_path.parent
-
-            associated_files = []
-            for candidate in (
-                source_path,
-                Path(str(source_path) + ".dsc"),
-                source_path.with_suffix(".dsc"),
-            ):
-                if candidate.exists() and candidate not in associated_files:
-                    associated_files.append(candidate)
+            associated_files = _associated_raw_payload_files(source_path)
 
             if associated_files:
                 blob_group_path = f"{detector_path}/{schema.DATASET_BLOB}"
@@ -298,12 +332,7 @@ def add_technical_event(
             for file_to_store in associated_files:
                 with open(file_to_store, "rb") as file_handle:
                     raw_blob = file_handle.read()
-                ext = file_to_store.suffix.lower()
-                file_format = (
-                    "dsc"
-                    if file_to_store.name.lower().endswith(".txt.dsc")
-                    else (ext[1:] if ext else "unknown")
-                )
+                file_format = _raw_payload_format(file_to_store)
                 blob_dataset_path = f"{blob_group_path}/raw_{file_format}"
                 utils.write_dataset(
                     file_path=file_path,
