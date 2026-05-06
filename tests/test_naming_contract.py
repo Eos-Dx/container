@@ -1,4 +1,7 @@
-from container.v0_2 import schema
+import h5py
+import pytest
+
+from container.v0_2 import schema, technical_container
 
 
 def test_technical_container_filename_contract():
@@ -39,3 +42,25 @@ def test_h5_group_id_contract():
     assert schema.format_point_id(1) == "pt_001"
     assert schema.format_measurement_id(1) == "meas_000000001"
     assert schema.format_analytical_measurement_id(2) == "ana_000000002"
+
+
+@pytest.mark.parametrize(
+    ("distance_cm", "expected_token"),
+    [
+        (2.0, "2cm"),
+        (17.0, "17cm"),
+    ],
+)
+def test_created_technical_container_filename_matches_root_distance_attr(
+    tmp_path,
+    distance_cm,
+    expected_token,
+):
+    _container_id, file_path = technical_container.create_technical_container(
+        folder=tmp_path,
+        distance_cm=distance_cm,
+    )
+
+    assert f"_{expected_token}_" in file_path
+    with h5py.File(file_path, "r") as h5f:
+        assert float(h5f.attrs[schema.ATTR_DISTANCE_CM]) == distance_cm
