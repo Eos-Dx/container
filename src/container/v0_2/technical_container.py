@@ -15,26 +15,32 @@ def _raw_payload_format(path: Path) -> str:
     if path.name.lower().endswith(".txt.dsc"):
         return "dsc"
     ext = path.suffix.lower()
-    return ext[1:] if ext else "unknown"
+    return ext[1:] if ext else "txt"
 
 
 def _associated_raw_payload_files(source_path: Path) -> List[Path]:
-    candidates = [source_path]
+    candidates = []
 
     if source_path.suffix.lower() == ".npy":
         txt_path = source_path.with_suffix(".txt")
+        extensionless_txt_path = source_path.with_suffix("")
         candidates.extend(
             [
                 txt_path,
                 Path(str(txt_path) + ".dsc"),
+                extensionless_txt_path,
+                Path(str(extensionless_txt_path) + ".txt.dsc"),
+                Path(str(extensionless_txt_path) + ".dsc"),
                 source_path.with_suffix(".dsc"),
                 Path(str(source_path) + ".dsc"),
             ]
         )
     else:
+        candidates.append(source_path)
         candidates.extend(
             [
                 Path(str(source_path) + ".dsc"),
+                Path(str(source_path) + ".txt.dsc"),
                 source_path.with_suffix(".dsc"),
             ]
         )
