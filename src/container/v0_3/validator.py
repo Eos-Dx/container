@@ -49,7 +49,8 @@ def validate_session_container(
             err("/", f"schema_version must be '{S.SCHEMA_VERSION}'")
         if _attr(f, S.ATTR_CONTAINER_TYPE) != S.CONTAINER_TYPE_SESSION:
             err("/", "container_type must be 'session'")
-        for key in (S.ATTR_INSTANCE_ID, S.ATTR_SESSION_UID, S.ATTR_CONTAINER_ID):
+        # instance_id is optional provenance; session_uid + container_id are required.
+        for key in (S.ATTR_SESSION_UID, S.ATTR_CONTAINER_ID):
             if not _attr(f, key):
                 err("/", f"missing root identity attr '{key}'")
 
@@ -62,6 +63,8 @@ def validate_session_container(
             err(S.GROUP_SESSION, f"/session NX_class must be {S.NX_ENTRY}")
         if _attr(session, S.ATTR_SESSION_PK) is None:
             err(S.GROUP_SESSION, "missing session_pk")
+        if not _attr(session, S.ATTR_SESSION_UID):
+            err(S.GROUP_SESSION, "missing session_uid")
         category = _attr(session, S.ATTR_CATEGORY)
         if category not in S.CATEGORIES:
             err(S.GROUP_SESSION, f"category '{category}' not in {sorted(S.CATEGORIES)}")
@@ -108,8 +111,7 @@ def _validate_dependencies(session, category, err, warn):
             err(path, f"dependency role '{role}' invalid")
         else:
             roles_present.add(role)
-        if edge.get(S.ATTR_SESSION_PK) is None:
-            err(path, "dependency missing session_pk")
+        # session_pk is optional readability; the uid is the real reference key.
         if not edge.get(S.ATTR_SESSION_UID):
             err(path, "dependency missing session_uid")
     for expected in S.EXPECTED_ROLES.get(category, ()):  # WARNING only
@@ -138,6 +140,8 @@ def _validate_sets(session, catalog_ids, err, warn):
             mpath = f"{path}/measurements/{det_name}"
             if _attr(det, S.ATTR_NX_CLASS) != S.NX_DETECTOR:
                 warn(mpath, f"measurement NX_class should be {S.NX_DETECTOR}")
+            if not _attr(det, S.ATTR_MEASUREMENT_UID):
+                err(mpath, "measurement missing measurement_uid")
             det_id = _attr(det, S.ATTR_DETECTOR_ID)
             if det_id is None:
                 err(mpath, "measurement missing detector_id reference")

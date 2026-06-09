@@ -13,6 +13,13 @@ from container.v0_3 import (
 )
 
 
+# Producer-supplied uids — in real use EoScan passes its persisted row uids;
+# here we derive readable, deterministic ones from the pk so dependency edges
+# (which reference a target session's uid) are easy to assert.
+def sess_uid(pk):
+    return f"sess-uid-{pk}"
+
+
 def make_detector_spec(detector_id=1, hardware_id="Det-A", **over):
     kw = dict(
         detector_id=detector_id, hardware_id=hardware_id, manufacturer="Advacam",
@@ -25,7 +32,7 @@ def make_detector_spec(detector_id=1, hardware_id="Det-A", **over):
 
 def make_measurement(pk=7, detector_id=1, **over):
     kw = dict(
-        measurement_pk=pk, detector_id=detector_id,
+        measurement_pk=pk, measurement_uid=f"meas-uid-{pk}", detector_id=detector_id,
         file_path=f"/data/det_{detector_id}.txt",
         metadata_file_path=f"/data/det_{detector_id}.dsc",
         mask_file_path=None,
@@ -52,7 +59,8 @@ def make_set(pk=99, measurements=None, qc=True, integration=True,
         integ = IntegrationPayload(q=np.linspace(0, 30, 2000),
                                    i=np.ones(2000), npt=2000)
     kw = dict(
-        set_pk=pk, workflow_id="wf-1", batch_id="b-1", status="COMPLETED",
+        set_pk=pk, set_uid=f"set-uid-{pk}", workflow_id="wf-1", batch_id="b-1",
+        status="COMPLETED",
         is_approved=True, measurement_type_name="sample_main",
         measurement_type_category="SAMPLE", workflow_key="bruker_xrd_fixed",
         distance_mm=170.0, voltage_kv=40.0, current_ua=30.0, exposure_time_s=60.0,
@@ -78,14 +86,16 @@ def make_session(category="SAMPLE", sets=None, dependencies=None, detectors=None
         detectors = [make_detector_spec(1, "Det-A"), make_detector_spec(2, "Det-B")]
     if dependencies is None:
         if category == "SAMPLE":
-            dependencies = [DependencyRef("calibration", 7), DependencyRef("system", 3)]
+            dependencies = [DependencyRef("calibration", sess_uid(7), session_pk=7),
+                            DependencyRef("system", sess_uid(3), session_pk=3)]
         elif category == "CALIBRATION":
-            dependencies = [DependencyRef("system", 3)]
+            dependencies = [DependencyRef("system", sess_uid(3), session_pk=3)]
         else:
             dependencies = []
     sample_name = "PAT001-S01" if category == "SAMPLE" else None
     kw = dict(
-        instance_id=instance_id, session_pk=session_pk, session_category=category,
+        session_uid=sess_uid(session_pk), instance_id=instance_id,
+        session_pk=session_pk, session_category=category,
         status="COMPLETED", operator_username="alice", machine_serial="SN-001",
         machine_type="EosDx", machine_location="LabA", wavelength_angstrom=1.5406,
         beam_energy_keV=8.047, source_type="Cu", started_at="2026-06-08 09:00:00",

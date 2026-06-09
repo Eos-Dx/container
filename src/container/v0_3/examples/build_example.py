@@ -4,6 +4,7 @@ Run:  python src/container/v0_3/examples/build_example.py [sample|calibration]
 Produces an .nxs.h5 under this folder's out/ and dumps the full tree.
 """
 
+import uuid
 from pathlib import Path
 
 import h5py
@@ -42,7 +43,7 @@ DETECTOR_SET_LAYOUT = {
 def _measurement(pk, detector_id):
     # decoded products only — original files live in the sibling raw zip
     return MeasurementPayload(
-        measurement_pk=pk, detector_id=detector_id,
+        measurement_pk=pk, measurement_uid=uuid.uuid4().hex, detector_id=detector_id,
         file_path=f"/data/sample_42/det_{detector_id}.txt",
         metadata_file_path=f"/data/sample_42/det_{detector_id}.dsc",
         mask_file_path=f"/masks/det_{detector_id}.npy",
@@ -54,7 +55,8 @@ def _measurement(pk, detector_id):
 
 def _set(pk, mt_name, mt_cat, measurements, with_integration=True):
     return SetPayload(
-        set_pk=pk, workflow_id=f"wf-{pk}", batch_id=f"batch-{pk}", status="COMPLETED",
+        set_pk=pk, set_uid=uuid.uuid4().hex,
+        workflow_id=f"wf-{pk}", batch_id=f"batch-{pk}", status="COMPLETED",
         is_approved=True, measurement_type_name=mt_name, measurement_type_category=mt_cat,
         workflow_key="advacam_xrd_fixed",
         distance_mm=170.0, voltage_kv=40.0,
@@ -93,6 +95,7 @@ def _set(pk, mt_name, mt_cat, measurements, with_integration=True):
 
 def build() -> str:
     payload = SessionPayload(
+        session_uid=uuid.uuid4().hex,
         instance_id="7f3c2a10-eos-labA", session_pk=42, session_category="SAMPLE",
         status="COMPLETED", operator_username="alice", machine_serial="SN-001",
         machine_type="EosDx-Bench", machine_location="LabA", wavelength_angstrom=1.5406,
@@ -104,8 +107,11 @@ def build() -> str:
                            "repeat_count": 1, "steps": [{"measurement_type_name": "sample_main"}]}]},
         detector_set_hardware_id="DS-WIDEPIX-01",
         detector_set_layout=DETECTOR_SET_LAYOUT, detectors=DETECTORS,
-        dependencies=[DependencyRef("calibration", 7), DependencyRef("system", 3),
-                      DependencyRef("system", 4)],
+        # in real use the target uid is the dep session's persisted uid (looked
+        # up in the DB); here it's illustrative.
+        dependencies=[DependencyRef("calibration", uuid.uuid4().hex, session_pk=7),
+                      DependencyRef("system", uuid.uuid4().hex, session_pk=3),
+                      DependencyRef("system", uuid.uuid4().hex, session_pk=4)],
         producer_software="eoscan", producer_version="1.0.0",
         sets=[
             _set(99, "sample_main", "SAMPLE",
@@ -155,6 +161,7 @@ def build_calibration() -> str:
     dark.poni_text = None  # dark frame yields no calibration geometry
 
     payload = SessionPayload(
+        session_uid=uuid.uuid4().hex,
         instance_id="7f3c2a10-eos-labA", session_pk=7, session_category="CALIBRATION",
         status="COMPLETED", operator_username="alice", machine_serial="SN-001",
         machine_type="EosDx-Bench", machine_location="LabA", wavelength_angstrom=1.5406,
@@ -163,7 +170,8 @@ def build_calibration() -> str:
         # no sample/patient/sample_type on a calibration session
         detector_set_hardware_id="DS-WIDEPIX-01",
         detector_set_layout=DETECTOR_SET_LAYOUT, detectors=DETECTORS,
-        dependencies=[DependencyRef("system", 3), DependencyRef("system", 4)],
+        dependencies=[DependencyRef("system", uuid.uuid4().hex, session_pk=3),
+                      DependencyRef("system", uuid.uuid4().hex, session_pk=4)],
         producer_software="eoscan", producer_version="1.0.0", sets=[agbh, dark],
     )
     OUT.mkdir(parents=True, exist_ok=True)

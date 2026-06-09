@@ -4,11 +4,10 @@ import h5py
 import numpy as np
 
 from container import open_container
-from container.common.ids import make_global_uid
 from container.v0_3 import build_session_container
 from container.v0_3.utils import read_json_dataset
 
-from _factory_v0_3 import make_measurement, make_session, make_set
+from _factory_v0_3 import make_measurement, make_session, make_set, sess_uid
 
 
 def build(tmp_path, **session_kw):
@@ -54,19 +53,27 @@ def test_measurement_detector_softlink(tmp_path):
 
 def test_root_identity_attrs(tmp_path):
     suid, cid, path = build(tmp_path, instance_id="inst-X", session_pk=42)
-    assert suid == make_global_uid("inst-X", "session", 42)        # deterministic
-    assert cid != suid                                              # distinct ids
+    assert suid == sess_uid(42)        # producer-supplied uid, written verbatim
+    assert cid != suid                 # distinct ids (physical vs logical)
     with h5py.File(path, "r") as f:
         assert f.attrs["session_uid"] == suid
         assert f.attrs["container_id"] == cid
-        assert f.attrs["instance_id"] == "inst-X"
+        assert f.attrs["instance_id"] == "inst-X"   # provenance, optional
+
+
+def test_instance_id_optional(tmp_path):
+    """instance_id is provenance-only — omitted entirely when not supplied."""
+    _, _, path = build(tmp_path, instance_id=None)
+    with h5py.File(path, "r") as f:
+        assert "instance_id" not in f.attrs
+        assert f.attrs["session_uid"] == sess_uid(42)
 
 
 def test_container_id_random_session_uid_stable(tmp_path):
     """Rebuilding the same session keeps session_uid, mints a new container_id."""
-    s1, c1, _ = build(tmp_path / "a", instance_id="inst-X", session_pk=42)
-    s2, c2, _ = build(tmp_path / "b", instance_id="inst-X", session_pk=42)
-    assert s1 == s2          # deterministic logical id
+    s1, c1, _ = build(tmp_path / "a", session_pk=42)
+    s2, c2, _ = build(tmp_path / "b", session_pk=42)
+    assert s1 == s2          # stable logical id (same producer uid)
     assert c1 != c2          # random physical id
 
 

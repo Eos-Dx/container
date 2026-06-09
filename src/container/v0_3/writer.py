@@ -29,10 +29,10 @@ import numpy as np
 
 from container.common import hdf5 as H
 from container.common.ids import (
-    format_session_container_filename,
     generate_container_id,
-    make_global_uid,
     now_timestamp,
+    sanitize_filename_token,
+    today_token,
 )
 
 from . import schema as S
@@ -41,13 +41,15 @@ from . import schema as S
 # ====================== Payload contract ======================
 @dataclasses.dataclass
 class DependencyRef:
-    """A container this session depends on, referenced by the target's pk.
+    """A container this session depends on, referenced by the target's uid.
 
-    The builder derives the target ``session_uid`` from ``session_pk`` — no
-    lookup, no need for the target container to exist yet.
+    The producer (EoScan) supplies the target session's persisted ``session_uid``
+    directly — it holds it in the DB — so no derivation is needed. The optional
+    ``session_pk`` rides along for human readability only.
     """
     role: str                 # "calibration" | "system"
-    session_pk: int
+    session_uid: str
+    session_pk: Optional[int] = None
 
 
 @dataclasses.dataclass
@@ -105,6 +107,7 @@ class MeasurementPayload:
     products: the 2D ``data`` frame this detector produced and its decoded
     ``mask``. No vendor bytes — originals live in the zip."""
     measurement_pk: int
+    measurement_uid: str        # globally-unique id (supplied by the producer)
     detector_id: int            # references a DetectorSpec in the session catalog
     file_path: str              # pointer into the raw zip
     metadata_file_path: str     # pointer into the raw zip
@@ -117,6 +120,7 @@ class MeasurementPayload:
 @dataclasses.dataclass
 class SetPayload:
     set_pk: int
+    set_uid: str                # globally-unique id (supplied by the producer)
     workflow_id: str
     batch_id: str
     status: str
@@ -146,7 +150,7 @@ class SetPayload:
 
 @dataclasses.dataclass
 class SessionPayload:
-    instance_id: str
+    session_uid: str            # globally-unique id (supplied by the producer)
     session_pk: int
     session_category: str
     status: str
@@ -168,6 +172,8 @@ class SessionPayload:
     sample_type_name: Optional[str] = None
     protocol_snapshot: Optional[dict] = None
     dependencies: List[DependencyRef] = dataclasses.field(default_factory=list)
+    # provenance only — which deployment produced this file; NOT used for ids
+    instance_id: Optional[str] = None
     producer_software: str = "unknown"
     producer_version: str = "unknown"
     sets: List[SetPayload] = dataclasses.field(default_factory=list)
@@ -182,12 +188,14 @@ def build_session_container(
 
     Returns ``(session_uid, container_id, file_path)``.
     """
-    instance_id = payload.instance_id
-    session_uid = make_global_uid(instance_id, S.ENTITY_SESSION, payload.session_pk)
+    session_uid = payload.session_uid
     container_id = generate_container_id()
 
-    sample_token = payload.sample_clinical_name or payload.machine_serial
-    filename = format_session_container_filename(session_uid, sample_id=sample_token)
+    # Filename keys on session_uid (stable per session → a rebuild overwrites the
+    # same name). session_uid is an arbitrary producer token, so sanitise it.
+    uid_token = sanitize_filename_token(session_uid)
+    sample_token = sanitize_filename_token(payload.sample_clinical_name or payload.machine_serial)
+    filename = f"session_{uid_token}_{sample_token}_{today_token()}.nxs.h5"
     folder = Path(folder)
     folder.mkdir(parents=True, exist_ok=True)
     file_path = folder / filename
@@ -196,7 +204,7 @@ def build_session_container(
         S.ATTR_FORMAT: S.FORMAT,
         S.ATTR_SCHEMA_VERSION: S.SCHEMA_VERSION,
         S.ATTR_CONTAINER_TYPE: S.CONTAINER_TYPE_SESSION,
-        S.ATTR_INSTANCE_ID: instance_id,
+        S.ATTR_INSTANCE_ID: payload.instance_id,   # provenance; skipped if None
         S.ATTR_SESSION_UID: session_uid,
         S.ATTR_CONTAINER_ID: container_id,
         S.ATTR_CREATED_AT: now_timestamp(),
@@ -206,14 +214,14 @@ def build_session_container(
 
     f = H.create_root(file_path, root_attrs)
     try:
-        _write_session(f, payload, instance_id, session_uid)
+        _write_session(f, payload, session_uid)
     finally:
         f.close()
 
     return session_uid, container_id, str(file_path)
 
 
-def _write_session(f, payload: SessionPayload, instance_id: str, session_uid: str) -> None:
+def _write_session(f, payload: SessionPayload, session_uid: str) -> None:
     # /session carries only session identity/status; sample & instrument data
     # live (once, not duplicated) in their NeXus subgroups.
     session = H.make_group(f, "session", S.NX_ENTRY, {
@@ -259,19 +267,19 @@ def _write_session(f, payload: SessionPayload, instance_id: str, session_uid: st
     if payload.protocol_snapshot is not None:
         H.write_json_dataset(session, S.DS_PROTOCOL_SNAPSHOT, payload.protocol_snapshot)
 
-    # dependency edges as a single JSON dataset (no attr-only groups)
+    # dependency edges as a single JSON dataset (no attr-only groups). The edge
+    # references the target by its persisted session_uid (producer-supplied).
     if payload.dependencies:
         edges = [{
             S.ATTR_ROLE: dep.role,
             S.ATTR_SESSION_PK: dep.session_pk,
-            S.ATTR_SESSION_UID: make_global_uid(
-                instance_id, S.ENTITY_SESSION, dep.session_pk),
+            S.ATTR_SESSION_UID: dep.session_uid,
         } for dep in payload.dependencies]
         H.write_json_dataset(session, S.DS_DEPENDENCIES, edges)
 
     sets = H.make_group(session, "sets")
     for idx, set_payload in enumerate(payload.sets, start=1):
-        _write_set(sets, S.format_set_id(idx), set_payload, instance_id)
+        _write_set(sets, S.format_set_id(idx), set_payload)
 
 
 def _write_detector_set(instrument, payload: SessionPayload) -> None:
@@ -304,12 +312,11 @@ def _write_detector(parent, det: DetectorSpec) -> None:
     H.write_scalar_dataset(grp, S.FIELD_SENSOR_THICKNESS, det.sensor_thickness_um, units=S.UNIT_UM)
 
 
-def _write_set(parent, name: str, sp: SetPayload, instance_id: str) -> None:
-    set_uid = make_global_uid(instance_id, S.ENTITY_SET, sp.set_pk)
+def _write_set(parent, name: str, sp: SetPayload) -> None:
     # set attrs are pure identity/labels; physical settings live in /acquisition.
     grp = H.make_group(parent, name, S.NX_COLLECTION, {
         S.ATTR_SET_PK: sp.set_pk,
-        S.ATTR_SET_UID: set_uid,
+        S.ATTR_SET_UID: sp.set_uid,
         S.ATTR_WORKFLOW_ID: sp.workflow_id,
         S.ATTR_BATCH_ID: sp.batch_id,
         S.ATTR_STATUS: sp.status,
@@ -346,7 +353,7 @@ def _write_set(parent, name: str, sp: SetPayload, instance_id: str) -> None:
 
     measurements = H.make_group(grp, S.GROUP_MEASUREMENTS)
     for m in sp.measurements:
-        _write_measurement(measurements, m, instance_id)
+        _write_measurement(measurements, m)
 
     if sp.qc_results:
         qc = H.make_group(grp, S.GROUP_QC)
@@ -373,15 +380,14 @@ def _write_2d_product(parent, name: str, arr) -> None:
     H.write_array_dataset(grp, S.DS_DATA, np.asarray(arr))
 
 
-def _write_measurement(parent, m: MeasurementPayload, instance_id: str) -> None:
+def _write_measurement(parent, m: MeasurementPayload) -> None:
     # A measurement is one detector's decoded frame in this set. Detector
     # hardware specs live once in the session catalog; here we reference them by
     # numeric detector_id, keep file-path pointers into the raw zip, and store
     # the decoded 2D frame (+ mask) — no opaque vendor bytes.
     attrs = {
         S.ATTR_MEASUREMENT_PK: m.measurement_pk,
-        S.ATTR_MEASUREMENT_UID: make_global_uid(
-            instance_id, S.ENTITY_MEASUREMENT, m.measurement_pk),
+        S.ATTR_MEASUREMENT_UID: m.measurement_uid,
         S.ATTR_DETECTOR_ID: m.detector_id,
         S.ATTR_FILE_PATH: m.file_path,
         S.ATTR_METADATA_FILE_PATH: m.metadata_file_path,
