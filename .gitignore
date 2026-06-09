@@ -7,3 +7,6 @@ dist/
 build/
 *.egg-info/
 .DS_Store
+
+# generated example containers
+src/container/v0_3/examples/out/
