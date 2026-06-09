@@ -18,6 +18,10 @@ VERSION_REGISTRY = {
         normalized_version="0_2",
         module_path="container.v0_2",
     ),
+    "0_3": VersionSpec(
+        normalized_version="0_3",
+        module_path="container.v0_3",
+    ),
 }
 
 
