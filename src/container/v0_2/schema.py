@@ -1,9 +1,16 @@
 """DIFRA NeXus/HDF5 Data Model v0.2 - Schema Constants and Utilities."""
 
-import re
-import time
-import uuid
 from typing import Literal
+
+# Shared id/filename helpers live in container.common.ids; re-exported here so
+# the historical container.v0_2.schema.<name> import paths keep working.
+from container.common.ids import (
+    format_session_container_filename,
+    generate_container_id,
+    now_timestamp,
+    today_token,
+    validate_container_id,
+)
 
 # ================== Version and Model ======================
 SCHEMA_VERSION = "0.2"
@@ -246,20 +253,8 @@ COMPRESSION_IMAGE = 4
 
 
 # ================== Helper Functions =======================
-def now_timestamp() -> str:
-    return time.strftime("%Y-%m-%d %H:%M:%S")
-
-
-def today_token() -> str:
-    return time.strftime("%Y%m%d")
-
-
-def generate_container_id() -> str:
-    return uuid.uuid4().hex[:16]
-
-
-def validate_container_id(container_id: str) -> bool:
-    return bool(re.match(r"^[0-9a-f]{16}$", container_id))
+# now_timestamp, today_token, generate_container_id, validate_container_id are
+# imported from container.common.ids at the top of this module.
 
 
 def parse_poni_distance(poni_content: str) -> float:
@@ -319,22 +314,6 @@ def format_technical_container_filename(
         distance_token = f"{distance_value:.6f}".rstrip("0").rstrip(".")
         distance_token = distance_token.replace(".", "p").replace("-", "m")
     return f"technical_{container_id}_{distance_token}cm_{date_part}.nxs.h5"
-
-
-def format_session_container_filename(
-    container_id: str,
-    sample_id: str = None,
-    date_token: str = None,
-) -> str:
-    """Format session filename: session_<id>_<sample>_<date>.nxs.h5."""
-    if not validate_container_id(container_id):
-        raise ValueError(f"Invalid container ID: {container_id}")
-
-    date_part = date_token or today_token()
-    if sample_id:
-        safe_sample_id = re.sub(r"[^a-zA-Z0-9_-]", "_", sample_id)
-        return f"session_{container_id}_{safe_sample_id}_{date_part}.nxs.h5"
-    return f"session_{container_id}_{date_part}.nxs.h5"
 
 
 def validate_technical_type(tech_type: str) -> bool:
