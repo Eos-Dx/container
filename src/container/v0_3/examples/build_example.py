@@ -12,6 +12,7 @@ import numpy as np
 
 from container.v0_3 import (
     DependencyRef,
+    DetectorSetSpec,
     DetectorSpec,
     IntegrationPayload,
     MeasurementPayload,
@@ -24,20 +25,25 @@ from container.v0_3 import (
 
 OUT = Path(__file__).resolve().parent / "out"
 
-# Detector catalog — stored ONCE per session, referenced by numeric detector_id.
-DETECTORS = [
-    DetectorSpec(detector_id=1, hardware_id="Advacam-WidePIX-A", manufacturer="Advacam",
-                 model="WidePIX", pixel_size_um=55.0, width_px=256, height_px=256,
-                 sensor_thickness_um=500.0, material="Si", mask_file_path="/masks/A.npy"),
-    DetectorSpec(detector_id=2, hardware_id="Advacam-WidePIX-B", manufacturer="Advacam",
-                 model="WidePIX", pixel_size_um=55.0, width_px=256, height_px=256,
-                 sensor_thickness_um=500.0, material="Si", mask_file_path="/masks/B.npy"),
+# Detector-set catalog — each set stored ONCE per session (geometry + its
+# detectors), referenced by a capture via numeric detector_set_id and by
+# measurements via numeric detector_id.
+DETECTOR_SETS = [
+    DetectorSetSpec(
+        detector_set_id=1, hardware_id="DS-WIDEPIX-01", primary_detector_id=1,
+        layout={"detectors": [{"detector_id": 1, "x_mm": 0.0, "y_mm": 0.0},
+                              {"detector_id": 2, "x_mm": 14.1, "y_mm": 0.0}],
+                "primary_detector_id": 1},
+        detectors=[
+            DetectorSpec(detector_id=1, hardware_id="Advacam-WidePIX-A", manufacturer="Advacam",
+                         model="WidePIX", pixel_size_um=55.0, width_px=256, height_px=256,
+                         sensor_thickness_um=500.0, material="Si", mask_file_path="/masks/A.npy"),
+            DetectorSpec(detector_id=2, hardware_id="Advacam-WidePIX-B", manufacturer="Advacam",
+                         model="WidePIX", pixel_size_um=55.0, width_px=256, height_px=256,
+                         sensor_thickness_um=500.0, material="Si", mask_file_path="/masks/B.npy"),
+        ],
+    ),
 ]
-DETECTOR_SET_LAYOUT = {
-    "detectors": [{"detector_id": 1, "x_mm": 0.0, "y_mm": 0.0},
-                  {"detector_id": 2, "x_mm": 14.1, "y_mm": 0.0}],
-    "primary_detector_id": 1,
-}
 
 
 def _measurement(pk, detector_id):
@@ -56,7 +62,7 @@ def _measurement(pk, detector_id):
 def _set(pk, mt_name, mt_cat, measurements, with_integration=True):
     return SetPayload(
         set_pk=pk, set_uid=uuid.uuid4().hex,
-        workflow_id=f"wf-{pk}", batch_id=f"batch-{pk}", status="COMPLETED",
+        workflow_id=f"wf-{pk}", batch_id=f"batch-{pk}", detector_set_id=1, status="COMPLETED",
         is_approved=True, measurement_type_name=mt_name, measurement_type_category=mt_cat,
         workflow_key="advacam_xrd_fixed",
         distance_mm=170.0, voltage_kv=40.0,
@@ -105,8 +111,7 @@ def build() -> str:
         protocol_snapshot={"protocol_id": 1, "name": "Standard tissue scan",
                            "category": "SAMPLE", "blocks": [{"sequence_order": 0,
                            "repeat_count": 1, "steps": [{"measurement_type_name": "sample_main"}]}]},
-        detector_set_hardware_id="DS-WIDEPIX-01",
-        detector_set_layout=DETECTOR_SET_LAYOUT, detectors=DETECTORS,
+        detector_sets=DETECTOR_SETS,
         # in real use the target uid is the dep session's persisted uid (looked
         # up in the DB); here it's illustrative.
         dependencies=[DependencyRef("calibration", uuid.uuid4().hex, session_pk=7),
@@ -168,8 +173,7 @@ def build_calibration() -> str:
         beam_energy_keV=8.0478, source_type="Cu", started_at="2026-06-08 08:00:00",
         completed_at="2026-06-08 08:30:00",
         # no sample/patient/sample_type on a calibration session
-        detector_set_hardware_id="DS-WIDEPIX-01",
-        detector_set_layout=DETECTOR_SET_LAYOUT, detectors=DETECTORS,
+        detector_sets=DETECTOR_SETS,
         dependencies=[DependencyRef("system", uuid.uuid4().hex, session_pk=3),
                       DependencyRef("system", uuid.uuid4().hex, session_pk=4)],
         producer_software="eoscan", producer_version="1.0.0", sets=[agbh, dark],

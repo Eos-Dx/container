@@ -73,13 +73,18 @@ ATTR_PRODUCER_VERSION = "producer_version"
 GROUP_SESSION = "/session"
 GROUP_SAMPLE = "/session/sample"
 GROUP_INSTRUMENT = "/session/instrument"
-GROUP_DETECTOR_SET = "/session/instrument/detector_set"
-GROUP_DETECTORS = "/session/instrument/detector_set/detectors"
+# A session-level CATALOG of detector sets (ds_<pk>), each holding its own
+# layout + nested detector catalog. A capture (set) references one by numeric
+# @detector_set_id + a soft link, mirroring how measurements reference detectors.
+# Today every session uses a single detector set; the catalog generalizes so a
+# future multi-detector-set capture (SAXS+WAXS at one batch) needs no reshape.
+GROUP_DETECTOR_SETS = "/session/instrument/detector_sets"
 GROUP_DEPENDENCIES = "/session/dependencies"
 GROUP_SETS = "/session/sets"
 
-# detector_set child names (relative)
-NAME_DETECTOR_SET = "detector_set"
+# detector-set / detector child names (relative)
+NAME_DETECTOR_SETS = "detector_sets"
+NAME_DETECTOR_SET = "detector_set"  # per-set soft link → catalog detector-set entry
 NAME_DETECTORS = "detectors"
 NAME_DETECTOR = "detector"          # per-measurement soft link → catalog entry
 DS_LAYOUT = "layout"
@@ -124,7 +129,9 @@ ATTR_IS_APPROVED = "is_approved"
 ATTR_MEASUREMENT_TYPE_NAME = "measurement_type_name"
 ATTR_MEASUREMENT_TYPE_CATEGORY = "measurement_type_category"
 ATTR_WORKFLOW_KEY = "workflow_key"   # acquisition orchestration workflow (provenance)
-ATTR_DETECTOR_SET_HARDWARE_ID = "detector_set_hardware_id"
+ATTR_DETECTOR_SET_ID = "detector_set_id"            # numeric intra-container detector-set key
+ATTR_DETECTOR_SET_HARDWARE_ID = "detector_set_hardware_id"  # external/human id on catalog
+ATTR_PRIMARY_DETECTOR_ID = "primary_detector_id"    # which detector anchors the geometry
 ATTR_DISTANCE_MM = "distance_mm"
 ATTR_VOLTAGE_KV = "voltage_kv"
 ATTR_CURRENT_UA = "current_ua"
@@ -244,3 +251,18 @@ def format_dep_id(index: int) -> str:
 def format_detector_id(detector_id: int) -> str:
     """Detector group name from the numeric intra-container detector_id."""
     return f"det_{detector_id}"
+
+
+def format_detector_set_id(detector_set_id: int) -> str:
+    """Detector-set catalog group name from the numeric detector_set_id."""
+    return f"ds_{detector_set_id}"
+
+
+def detector_set_path(detector_set_id: int) -> str:
+    """Absolute path to a detector set's catalog entry: /…/detector_sets/ds_<pk>."""
+    return f"{GROUP_DETECTOR_SETS}/{format_detector_set_id(detector_set_id)}"
+
+
+def detectors_catalog_path(detector_set_id: int) -> str:
+    """Absolute path to a detector set's nested detector catalog."""
+    return f"{detector_set_path(detector_set_id)}/{NAME_DETECTORS}"

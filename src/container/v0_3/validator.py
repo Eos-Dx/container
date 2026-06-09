@@ -75,29 +75,34 @@ def validate_session_container(
             err(S.GROUP_SAMPLE, "SAMPLE session requires a non-empty sample/name")
 
         _validate_dependencies(session, category, err, warn)
-        catalog_ids = _catalog_detector_ids(session)
-        _validate_sets(session, catalog_ids, err, warn)
+        catalog = _detector_catalog(session)
+        _validate_sets(session, catalog, err, warn)
 
     return (not _has_error(errors), errors)
 
 
-def _catalog_detector_ids(session):
-    """Numeric detector_ids declared in the session detector catalog."""
-    ids = set()
+def _detector_catalog(session):
+    """``{detector_set_id: {detector_ids}}`` declared in the session catalog."""
+    catalog = {}
     instrument = session.get("instrument")
     if instrument is None:
-        return ids
-    ds = instrument.get(S.NAME_DETECTOR_SET)
-    if ds is None:
-        return ids
-    catalog = ds.get(S.NAME_DETECTORS)
-    if catalog is None:
-        return ids
-    for det in catalog.values():
-        det_id = _attr(det, S.ATTR_DETECTOR_ID)
-        if det_id is not None:
-            ids.add(int(det_id))
-    return ids
+        return catalog
+    container = instrument.get(S.NAME_DETECTOR_SETS)
+    if container is None:
+        return catalog
+    for ds in container.values():
+        ds_id = _attr(ds, S.ATTR_DETECTOR_SET_ID)
+        if ds_id is None:
+            continue
+        ids = set()
+        detectors = ds.get(S.NAME_DETECTORS)
+        if detectors is not None:
+            for det in detectors.values():
+                det_id = _attr(det, S.ATTR_DETECTOR_ID)
+                if det_id is not None:
+                    ids.add(int(det_id))
+        catalog[int(ds_id)] = ids
+    return catalog
 
 
 def _validate_dependencies(session, category, err, warn):
@@ -120,7 +125,7 @@ def _validate_dependencies(session, category, err, warn):
                  f"{category} session expected a '{expected}' dependency edge")
 
 
-def _validate_sets(session, catalog_ids, err, warn):
+def _validate_sets(session, catalog, err, warn):
     if "sets" not in session:
         warn(S.GROUP_SETS, "session has no sets")
         return
@@ -130,6 +135,17 @@ def _validate_sets(session, catalog_ids, err, warn):
             err(path, "set missing set_pk")
         if not _attr(set_grp, S.ATTR_SET_UID):
             err(path, "set missing set_uid")
+
+        # The capture references one catalogued detector set; its measurements'
+        # detectors must belong to that set's nested catalog.
+        ds_id = _attr(set_grp, S.ATTR_DETECTOR_SET_ID)
+        allowed_det_ids = set()
+        if ds_id is None:
+            err(path, "set missing detector_set_id reference")
+        elif int(ds_id) not in catalog:
+            err(path, f"detector_set_id {ds_id} not in session detector-set catalog")
+        else:
+            allowed_det_ids = catalog[int(ds_id)]
 
         measurements = set_grp.get(S.GROUP_MEASUREMENTS)
         det_names = [n for n in measurements] if measurements else []
@@ -145,8 +161,8 @@ def _validate_sets(session, catalog_ids, err, warn):
             det_id = _attr(det, S.ATTR_DETECTOR_ID)
             if det_id is None:
                 err(mpath, "measurement missing detector_id reference")
-            elif int(det_id) not in catalog_ids:
-                err(mpath, f"detector_id {det_id} not in session detector catalog")
+            elif int(det_id) not in allowed_det_ids:
+                err(mpath, f"detector_id {det_id} not in detector set {ds_id}'s catalog")
 
         for prod in (S.DS_RAW_2D, S.DS_PROCESSED):
             if prod in set_grp:

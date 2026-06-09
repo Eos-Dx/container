@@ -62,25 +62,33 @@ class SessionContainer:
                 return []
             return read_json_dataset(session, S.DS_DEPENDENCIES, default=[])
 
-    # ---- detector catalog (session-level, shared across sets) ----
-    def detector_set(self) -> Optional[Dict[str, Any]]:
-        with h5py.File(self.file_path, "r") as f:
-            ds = f.get(S.GROUP_DETECTOR_SET)
-            if ds is None:
-                return None
-            out: Dict[str, Any] = {k: _decode(v) for k, v in ds.attrs.items()}
-            if S.DS_LAYOUT in ds:
-                out[S.DS_LAYOUT] = read_json_dataset(ds, S.DS_LAYOUT, default={})
-            return out
-
-    def detectors(self) -> List[Dict[str, Any]]:
+    # ---- detector-set catalog (session-level; one entry per detector set) ----
+    def detector_sets(self) -> List[Dict[str, Any]]:
+        """Each catalogued detector set: its attrs + ``layout`` + ``detectors``."""
         out: List[Dict[str, Any]] = []
         with h5py.File(self.file_path, "r") as f:
-            catalog = f.get(S.GROUP_DETECTORS)
-            if catalog is None:
+            container = f.get(S.GROUP_DETECTOR_SETS)
+            if container is None:
                 return out
-            for name in sorted(catalog):
-                out.append({"name": name, **_read_fields(catalog[name])})
+            for name in sorted(container):
+                ds = container[name]
+                entry: Dict[str, Any] = {"name": name,
+                                         **{k: _decode(v) for k, v in ds.attrs.items()}}
+                if S.DS_LAYOUT in ds:
+                    entry[S.DS_LAYOUT] = read_json_dataset(ds, S.DS_LAYOUT, default={})
+                catalog = ds.get(S.NAME_DETECTORS)
+                entry[S.NAME_DETECTORS] = (
+                    [{"name": dn, **_read_fields(catalog[dn])} for dn in sorted(catalog)]
+                    if catalog is not None else []
+                )
+                out.append(entry)
+        return out
+
+    def detectors(self) -> List[Dict[str, Any]]:
+        """Flat list of every detector across all detector sets (convenience)."""
+        out: List[Dict[str, Any]] = []
+        for ds in self.detector_sets():
+            out.extend(ds[S.NAME_DETECTORS])
         return out
 
     # ---- sets ----

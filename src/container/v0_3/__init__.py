@@ -18,6 +18,7 @@ from . import writer
 from .reader import SessionContainer, TechnicalContainer
 from .writer import (
     DependencyRef,
+    DetectorSetSpec,
     DetectorSpec,
     IntegrationPayload,
     MeasurementPayload,
@@ -40,6 +41,7 @@ __all__ = [
     "SetPayload",
     "MeasurementPayload",
     "DetectorSpec",
+    "DetectorSetSpec",
     "QCResultPayload",
     "IntegrationPayload",
     "ProcessingStepPayload",

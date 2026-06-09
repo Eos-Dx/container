@@ -45,7 +45,7 @@ def test_measurement_detector_softlink(tmp_path):
         meas = f["/session/sets/set_001/measurements/det_1"]
         link = meas.get("detector", getlink=True)
         assert isinstance(link, h5py.SoftLink)
-        assert link.path == "/session/instrument/detector_set/detectors/det_1"
+        assert link.path == "/session/instrument/detector_sets/ds_1/detectors/det_1"
         # dereferences to the catalog NXdetector spec
         assert meas["detector"].attrs["detector_hardware_id"] == "Det-A"
         assert meas.attrs["detector_id"] == 1
@@ -113,10 +113,15 @@ def test_metadata_payload(tmp_path):
     with h5py.File(path, "r") as f:
         set_grp = f["/session/sets/set_001"]
         assert read_json_dataset(set_grp, "metadata")["lrf"]["average_mm"] == 1.2
-        # geometry/layout lives once at session level (one per session), not per set
+        # geometry/layout lives once in the detector-set catalog, not per set
         assert "geometry" not in set_grp
-        ds = f["/session/instrument/detector_set"]
+        ds = f["/session/instrument/detector_sets/ds_1"]
         assert read_json_dataset(ds, "layout")["primary_detector_id"] == 1
+        assert ds.attrs["primary_detector_id"] == 1
+        # the capture references its detector set by id + a resolving soft link
+        assert set_grp.attrs["detector_set_id"] == 1
+        assert set_grp.get("detector_set", getlink=True).path == \
+            "/session/instrument/detector_sets/ds_1"
         pc = read_json_dataset(set_grp["processing"], "config")
         assert pc["postprocessing_key"] == "sample"
         assert pc["postprocessing_params"]["integrate_npt"] == 2000
@@ -146,7 +151,7 @@ def test_physics_scalars_are_fields_with_units(tmp_path):
         meas = f["/session/sets/set_001/measurements/det_1"]
         assert meas.attrs["detector_id"] == 1
         assert "x_pixel_size" not in meas               # spec lives in catalog, not here
-        det = f["/session/instrument/detector_set/detectors/det_1"]
+        det = f["/session/instrument/detector_sets/ds_1/detectors/det_1"]
         assert det["x_pixel_size"].attrs["units"] == "um"
         assert det["x_pixel_count"][()] == 256 and det["x_pixel_count"].attrs["units"] == "pixel"
         assert det["sensor_thickness"][()] == 500.0

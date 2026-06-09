@@ -4,6 +4,7 @@ import numpy as np
 
 from container.v0_3 import (
     DependencyRef,
+    DetectorSetSpec,
     DetectorSpec,
     IntegrationPayload,
     MeasurementPayload,
@@ -28,6 +29,19 @@ def make_detector_spec(detector_id=1, hardware_id="Det-A", **over):
     )
     kw.update(over)
     return DetectorSpec(**kw)
+
+
+def make_detector_set_spec(detector_set_id=1, hardware_id="DS-1", detectors=None, **over):
+    if detectors is None:
+        detectors = [make_detector_spec(1, "Det-A"), make_detector_spec(2, "Det-B")]
+    kw = dict(
+        detector_set_id=detector_set_id, hardware_id=hardware_id,
+        layout={"detectors": [{"detector_id": 1, "x_mm": 0, "y_mm": 0}],
+                "primary_detector_id": 1},
+        detectors=detectors, primary_detector_id=1,
+    )
+    kw.update(over)
+    return DetectorSetSpec(**kw)
 
 
 def make_measurement(pk=7, detector_id=1, **over):
@@ -60,7 +74,7 @@ def make_set(pk=99, measurements=None, qc=True, integration=True,
                                    i=np.ones(2000), npt=2000)
     kw = dict(
         set_pk=pk, set_uid=f"set-uid-{pk}", workflow_id="wf-1", batch_id="b-1",
-        status="COMPLETED",
+        detector_set_id=1, status="COMPLETED",
         is_approved=True, measurement_type_name="sample_main",
         measurement_type_category="SAMPLE", workflow_key="bruker_xrd_fixed",
         distance_mm=170.0, voltage_kv=40.0, current_ua=30.0, exposure_time_s=60.0,
@@ -78,12 +92,12 @@ def make_set(pk=99, measurements=None, qc=True, integration=True,
     return SetPayload(**kw)
 
 
-def make_session(category="SAMPLE", sets=None, dependencies=None, detectors=None,
+def make_session(category="SAMPLE", sets=None, dependencies=None, detector_sets=None,
                  instance_id="inst-1", session_pk=42, **over):
     if sets is None:
         sets = [make_set()]
-    if detectors is None:
-        detectors = [make_detector_spec(1, "Det-A"), make_detector_spec(2, "Det-B")]
+    if detector_sets is None:
+        detector_sets = [make_detector_set_spec()]
     if dependencies is None:
         if category == "SAMPLE":
             dependencies = [DependencyRef("calibration", sess_uid(7), session_pk=7),
@@ -100,10 +114,7 @@ def make_session(category="SAMPLE", sets=None, dependencies=None, detectors=None
         machine_type="EosDx", machine_location="LabA", wavelength_angstrom=1.5406,
         beam_energy_keV=8.047, source_type="Cu", started_at="2026-06-08 09:00:00",
         completed_at="2026-06-08 10:30:00",
-        detector_set_hardware_id="DS-1",
-        detector_set_layout={"detectors": [{"detector_id": 1, "x_mm": 0, "y_mm": 0}],
-                             "primary_detector_id": 1},
-        detectors=detectors,
+        detector_sets=detector_sets,
         sample_clinical_name=sample_name,
         patient_clinical_name="PAT001" if category == "SAMPLE" else None,
         sample_type_name="tissue" if category == "SAMPLE" else None,
