@@ -21,6 +21,15 @@ def _read_fields(group):
     return out
 
 
+def _child_by_prefix(group, prefix):
+    """First child whose name starts with ``prefix`` — group names are
+    `<kind>_<index/id>_<label>` and lookups match on the indexed prefix only."""
+    for name in group:
+        if name.startswith(prefix):
+            return group[name]
+    return None
+
+
 class SessionContainer:
     """Lazy read accessor over a v0.3 session container."""
 
@@ -110,16 +119,8 @@ class SessionContainer:
         return out
 
     def _set_by_index(self, f, set_idx: int):
-        # Group names are `set_<idx>_<label>`; the label is display-only, so
-        # lookups match on the index prefix.
         grp = f.get(S.GROUP_SETS)
-        if grp is None:
-            return None
-        prefix = f"set_{set_idx:03d}_"
-        for name in grp:
-            if name.startswith(prefix):
-                return grp[name]
-        return None
+        return _child_by_prefix(grp, f"set_{set_idx:03d}_") if grp is not None else None
 
     def measurements(self, set_idx: int) -> List[Dict[str, Any]]:
         out: List[Dict[str, Any]] = []
@@ -134,8 +135,12 @@ class SessionContainer:
 
     def frame(self, set_idx: int, detector_id: int) -> Optional[np.ndarray]:
         """Decoded 2D frame a single detector produced in this set."""
-        key = f"{S.GROUP_MEASUREMENTS}/{S.format_detector_id(detector_id)}/{S.DS_DATA}"
-        return self._set_dataset(set_idx, key)
+        with h5py.File(self.file_path, "r") as f:
+            grp = self._set_by_index(f, set_idx)
+            if grp is None or S.GROUP_MEASUREMENTS not in grp:
+                return None
+            m = _child_by_prefix(grp[S.GROUP_MEASUREMENTS], f"det_{detector_id}_")
+            return m[S.DS_DATA][()] if m is not None and S.DS_DATA in m else None
 
     def raw(self, set_idx: int) -> Optional[np.ndarray]:
         """Set-level decoded raw composite (stitched across detectors)."""

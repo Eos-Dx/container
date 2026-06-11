@@ -87,7 +87,6 @@ GROUP_SETS = "/session/sets"
 NAME_DETECTOR_SETS = "detector_sets"
 NAME_DETECTOR_SET = "detector_set"  # per-set soft link → catalog detector-set entry
 NAME_DETECTORS = "detectors"
-NAME_DETECTOR = "detector"          # per-measurement soft link → catalog entry
 DS_LAYOUT = "layout"
 
 # Per-set child group names (relative)
@@ -242,7 +241,10 @@ DS_DEPENDENCIES = "dependencies"
 # mandatory where order is semantic (sets = measured order, steps = execution
 # order, qc = priority order) because HDF5 iterates children alphabetically;
 # the label makes the tree readable without opening attributes. Lookups parse
-# the index prefix only — labels are display, never identity.
+# the index prefix only — labels are display, never identity. Labels come from
+# producer DB fields (measurement type, hardware_id, check name), so renaming
+# those changes the group names in a REBUILT container — fine: files are
+# write-once and the canonical keys live in attrs, untouched by label drift.
 def _label_token(label: str) -> str:
     return sanitize_filename_token(label).lower()
 
@@ -266,21 +268,17 @@ def format_dep_id(index: int) -> str:
     return f"dep_{index:03d}"
 
 
-def format_detector_id(detector_id: int) -> str:
-    """Detector group name from the numeric intra-container detector_id."""
-    return f"det_{detector_id}"
+def format_detector_id(detector_id: int, label: str) -> str:
+    """Detector group name: det_<id>_<hardware_id>. Used for both catalog
+    entries and measurement groups (one measurement per detector per set)."""
+    return f"det_{detector_id}_{_label_token(label)}"
 
 
-def format_detector_set_id(detector_set_id: int) -> str:
-    """Detector-set catalog group name from the numeric detector_set_id."""
-    return f"ds_{detector_set_id}"
+def format_detector_set_id(detector_set_id: int, label: str) -> str:
+    """Detector-set catalog group name: ds_<id>_<hardware_id>."""
+    return f"ds_{detector_set_id}_{_label_token(label)}"
 
 
-def detector_set_path(detector_set_id: int) -> str:
-    """Absolute path to a detector set's catalog entry: /…/detector_sets/ds_<pk>."""
-    return f"{GROUP_DETECTOR_SETS}/{format_detector_set_id(detector_set_id)}"
-
-
-def detectors_catalog_path(detector_set_id: int) -> str:
-    """Absolute path to a detector set's nested detector catalog."""
-    return f"{detector_set_path(detector_set_id)}/{NAME_DETECTORS}"
+def detector_set_path(detector_set_id: int, label: str) -> str:
+    """Absolute path to a detector set's catalog entry."""
+    return f"{GROUP_DETECTOR_SETS}/{format_detector_set_id(detector_set_id, label)}"

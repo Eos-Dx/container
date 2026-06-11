@@ -38,17 +38,14 @@ def test_set_and_detector_counts(tmp_path):
     assert len(c.measurements(1)) == 2
 
 
-def test_measurement_detector_softlink(tmp_path):
-    """@detector_id is canonical; the `detector` soft link resolves to the catalog."""
+def test_measurement_references_detector_by_id_only(tmp_path):
+    """@detector_id is the canonical reference; no per-measurement soft link —
+    the full spec is reachable via the set's `detector_set` link."""
     _, _, path = build(tmp_path)
     with h5py.File(path, "r") as f:
-        meas = f["/session/sets/set_001_sample_main/measurements/det_1"]
-        link = meas.get("detector", getlink=True)
-        assert isinstance(link, h5py.SoftLink)
-        assert link.path == "/session/instrument/detector_sets/ds_1/detectors/det_1"
-        # dereferences to the catalog NXdetector spec
-        assert meas["detector"].attrs["detector_hardware_id"] == "Det-A"
+        meas = f["/session/sets/set_001_sample_main/measurements/det_1_det-a"]
         assert meas.attrs["detector_id"] == 1
+        assert "detector" not in meas
 
 
 def test_root_identity_attrs(tmp_path):
@@ -115,13 +112,13 @@ def test_metadata_payload(tmp_path):
         assert read_json_dataset(set_grp, "metadata")["lrf"]["average_mm"] == 1.2
         # geometry/layout lives once in the detector-set catalog, not per set
         assert "geometry" not in set_grp
-        ds = f["/session/instrument/detector_sets/ds_1"]
+        ds = f["/session/instrument/detector_sets/ds_1_ds-1"]
         assert read_json_dataset(ds, "layout")["primary_detector_id"] == 1
         assert ds.attrs["primary_detector_id"] == 1
         # the capture references its detector set by id + a resolving soft link
         assert set_grp.attrs["detector_set_id"] == 1
         assert set_grp.get("detector_set", getlink=True).path == \
-            "/session/instrument/detector_sets/ds_1"
+            "/session/instrument/detector_sets/ds_1_ds-1"
         pc = read_json_dataset(set_grp["processing"], "config")
         assert pc["postprocessing_key"] == "sample"
         assert pc["postprocessing_params"]["integrate_npt"] == 2000
@@ -148,10 +145,10 @@ def test_physics_scalars_are_fields_with_units(tmp_path):
         # set attrs are pure identity now — no physical quantities mixed in
         assert "voltage_kv" not in f["/session/sets/set_001_sample_main"].attrs
         # measurements are slim references — detector specs live in the catalog
-        meas = f["/session/sets/set_001_sample_main/measurements/det_1"]
+        meas = f["/session/sets/set_001_sample_main/measurements/det_1_det-a"]
         assert meas.attrs["detector_id"] == 1
         assert "x_pixel_size" not in meas               # spec lives in catalog, not here
-        det = f["/session/instrument/detector_sets/ds_1/detectors/det_1"]
+        det = f["/session/instrument/detector_sets/ds_1_ds-1/detectors/det_1_det-a"]
         assert det["x_pixel_size"].attrs["units"] == "um"
         assert det["x_pixel_count"][()] == 256 and det["x_pixel_count"].attrs["units"] == "pixel"
         assert det["sensor_thickness"][()] == 500.0

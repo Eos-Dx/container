@@ -298,10 +298,16 @@ def _write_session(f, payload: SessionPayload, session_uid: str) -> None:
         } for dep in payload.dependencies]
         H.write_json_dataset(session, S.DS_DEPENDENCIES, edges)
 
+    # Group-name labels for detector references — hardware_id is the external/
+    # human identity; numeric @*_id attrs stay canonical.
+    ds_labels = {ds.detector_set_id: ds.hardware_id for ds in payload.detector_sets}
+    det_labels = {det.detector_id: det.hardware_id
+                  for ds in payload.detector_sets for det in ds.detectors}
+
     sets = H.make_group(session, "sets")
     for idx, set_payload in enumerate(payload.sets, start=1):
         _write_set(sets, S.format_set_id(idx, set_payload.measurement_type_name),
-                   set_payload)
+                   set_payload, ds_labels, det_labels)
 
 
 def _write_detector_sets(instrument, detector_sets: List[DetectorSetSpec]) -> None:
@@ -311,7 +317,8 @@ def _write_detector_sets(instrument, detector_sets: List[DetectorSetSpec]) -> No
 
 
 def _write_one_detector_set(parent, ds: DetectorSetSpec) -> None:
-    grp = H.make_group(parent, S.format_detector_set_id(ds.detector_set_id), S.NX_COLLECTION, {
+    grp = H.make_group(parent, S.format_detector_set_id(ds.detector_set_id, ds.hardware_id),
+                       S.NX_COLLECTION, {
         S.ATTR_DETECTOR_SET_ID: ds.detector_set_id,
         S.ATTR_DETECTOR_SET_HARDWARE_ID: ds.hardware_id,
         S.ATTR_PRIMARY_DETECTOR_ID: ds.primary_detector_id,
@@ -326,7 +333,8 @@ def _write_one_detector_set(parent, ds: DetectorSetSpec) -> None:
 def _write_detector(parent, det: DetectorSpec) -> None:
     # NXdetector — identity/descriptive as attrs; geometry as field datasets
     # with @units. Keyed by numeric detector_id; hardware_id kept as external id.
-    grp = H.make_group(parent, S.format_detector_id(det.detector_id), S.NX_DETECTOR, {
+    grp = H.make_group(parent, S.format_detector_id(det.detector_id, det.hardware_id),
+                       S.NX_DETECTOR, {
         S.ATTR_DETECTOR_ID: det.detector_id,
         S.ATTR_DETECTOR_HARDWARE_ID: det.hardware_id,
         S.ATTR_MANUFACTURER: det.manufacturer,
@@ -341,7 +349,7 @@ def _write_detector(parent, det: DetectorSpec) -> None:
     H.write_scalar_dataset(grp, S.FIELD_SENSOR_THICKNESS, det.sensor_thickness_um, units=S.UNIT_UM)
 
 
-def _write_set(parent, name: str, sp: SetPayload) -> None:
+def _write_set(parent, name: str, sp: SetPayload, ds_labels: dict, det_labels: dict) -> None:
     # set attrs are pure identity/labels; physical settings live in /acquisition.
     grp = H.make_group(parent, name, S.NX_COLLECTION, {
         S.ATTR_SET_PK: sp.set_pk,
@@ -361,7 +369,8 @@ def _write_set(parent, name: str, sp: SetPayload) -> None:
     # convenience soft link to this capture's detector-set catalog entry —
     # @detector_set_id stays canonical, but grp["detector_set"] resolves to the
     # NX_COLLECTION spec (layout + detectors) in any HDF5 reader.
-    grp[S.NAME_DETECTOR_SET] = h5py.SoftLink(S.detector_set_path(sp.detector_set_id))
+    grp[S.NAME_DETECTOR_SET] = h5py.SoftLink(
+        S.detector_set_path(sp.detector_set_id, ds_labels[sp.detector_set_id]))
 
     # acquisition conditions for this set — physical fields-with-units, grouped
     # so the set itself stays a tidy identity record.
@@ -387,7 +396,7 @@ def _write_set(parent, name: str, sp: SetPayload) -> None:
 
     measurements = H.make_group(grp, S.GROUP_MEASUREMENTS)
     for m in sp.measurements:
-        _write_measurement(measurements, m, sp.detector_set_id)
+        _write_measurement(measurements, m, det_labels[m.detector_id])
 
     if sp.qc_results:
         qc = H.make_group(grp, S.GROUP_QC)
@@ -414,12 +423,12 @@ def _write_2d_product(parent, name: str, arr) -> None:
     H.write_array_dataset(grp, S.DS_DATA, np.asarray(arr))
 
 
-def _write_measurement(parent, m: MeasurementPayload, detector_set_id: int) -> None:
+def _write_measurement(parent, m: MeasurementPayload, det_label: str) -> None:
     # A measurement is one detector's decoded frame in this set. Detector
     # hardware specs live once in the session catalog (under this measurement's
-    # detector set); here we reference them by numeric detector_id, keep
-    # file-path pointers into the raw zip, and store the decoded 2D frame (+
-    # mask) — no opaque vendor bytes.
+    # detector set); here we reference them by numeric detector_id (the set's
+    # detector_set link reaches the full spec), keep file-path pointers into
+    # the raw zip, and store the decoded 2D frame (+ mask) — no vendor bytes.
     attrs = {
         S.ATTR_MEASUREMENT_PK: m.measurement_pk,
         S.ATTR_MEASUREMENT_UID: m.measurement_uid,
@@ -430,12 +439,8 @@ def _write_measurement(parent, m: MeasurementPayload, detector_set_id: int) -> N
     }
     if m.data is not None:                       # NXdata auto-plot on the frame
         attrs[S.ATTR_SIGNAL] = S.DS_DATA
-    grp = H.make_group(parent, S.format_detector_id(m.detector_id), S.NX_DETECTOR, attrs)
-    # convenience soft link to the catalog entry — @detector_id stays canonical,
-    # but `grp["detector"]` resolves to the NXdetector spec in any HDF5 reader.
-    # The catalog lives under this measurement's detector set.
-    grp[S.NAME_DETECTOR] = h5py.SoftLink(
-        f"{S.detectors_catalog_path(detector_set_id)}/{S.format_detector_id(m.detector_id)}")
+    grp = H.make_group(parent, S.format_detector_id(m.detector_id, det_label),
+                       S.NX_DETECTOR, attrs)
     if m.data is not None:
         H.write_array_dataset(grp, S.DS_DATA, np.asarray(m.data))
     if m.mask is not None:
