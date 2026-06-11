@@ -22,7 +22,7 @@ def test_build_roundtrip_and_autodetect(tmp_path):
     assert meta["schema_version"] == "0.3"
     assert meta["format"] == "xrd-session"
     assert meta["container_type"] == "session"
-    assert [s["name"] for s in c.sets()] == ["set_001"]
+    assert [s["name"] for s in c.sets()] == ["set_001_sample_main"]
     # per-detector decoded frame round-trips (det_1 frame filled with 1.0)
     frame = c.frame(1, 1)
     assert frame.shape == (4, 4) and frame[0, 0] == 1.0
@@ -42,7 +42,7 @@ def test_measurement_detector_softlink(tmp_path):
     """@detector_id is canonical; the `detector` soft link resolves to the catalog."""
     _, _, path = build(tmp_path)
     with h5py.File(path, "r") as f:
-        meas = f["/session/sets/set_001/measurements/det_1"]
+        meas = f["/session/sets/set_001_sample_main/measurements/det_1"]
         link = meas.get("detector", getlink=True)
         assert isinstance(link, h5py.SoftLink)
         assert link.path == "/session/instrument/detector_sets/ds_1/detectors/det_1"
@@ -84,11 +84,11 @@ def test_nexus_base_classes(tmp_path):
         assert f["/session"].attrs["NX_class"] == "NXentry"
         assert f["/session/sample"].attrs["NX_class"] == "NXsample"
         assert f["/session/instrument"].attrs["NX_class"] == "NXinstrument"
-        det = list(f["/session/sets/set_001/measurements"].values())[0]
+        det = list(f["/session/sets/set_001_sample_main/measurements"].values())[0]
         assert det.attrs["NX_class"] == "NXdetector"
-        assert f["/session/sets/set_001/integration"].attrs["NX_class"] == "NXdata"
+        assert f["/session/sets/set_001_sample_main/integration"].attrs["NX_class"] == "NXdata"
         # custom groups carry no misleading base class
-        assert "NX_class" not in f["/session/sets/set_001/qc"].attrs
+        assert "NX_class" not in f["/session/sets/set_001_sample_main/qc"].attrs
 
 
 def test_set_matrices_optional(tmp_path):
@@ -96,22 +96,22 @@ def test_set_matrices_optional(tmp_path):
     _, _, path = build(tmp_path / "p",
                        sets=[make_set(processed=np.ones((4, 5)), raw=np.ones((4, 5)))])
     with h5py.File(path, "r") as f:
-        proc = f["/session/sets/set_001/processed"]
+        proc = f["/session/sets/set_001_sample_main/processed"]
         assert proc.attrs["NX_class"] == "NXdata"
         assert proc.attrs["signal"] == "data"
         assert proc["data"].shape == (4, 5)
-        assert f["/session/sets/set_001/raw/data"].shape == (4, 5)
+        assert f["/session/sets/set_001_sample_main/raw/data"].shape == (4, 5)
     # absent
     _, _, path2 = build(tmp_path / "a", sets=[make_set()])
     with h5py.File(path2, "r") as f:
-        assert "processed" not in f["/session/sets/set_001"]
-        assert "raw" not in f["/session/sets/set_001"]
+        assert "processed" not in f["/session/sets/set_001_sample_main"]
+        assert "raw" not in f["/session/sets/set_001_sample_main"]
 
 
 def test_metadata_payload(tmp_path):
     _, _, path = build(tmp_path)
     with h5py.File(path, "r") as f:
-        set_grp = f["/session/sets/set_001"]
+        set_grp = f["/session/sets/set_001_sample_main"]
         assert read_json_dataset(set_grp, "metadata")["lrf"]["average_mm"] == 1.2
         # geometry/layout lives once in the detector-set catalog, not per set
         assert "geometry" not in set_grp
@@ -140,15 +140,15 @@ def test_physics_scalars_are_fields_with_units(tmp_path):
         assert wl[()] == 1.5406 and wl.attrs["units"] == "angstrom"
         assert f["/session/instrument/beam_energy"].attrs["units"] == "keV"
         # per-set acquisition conditions grouped, as fields-with-units
-        acq = f["/session/sets/set_001/acquisition"]
+        acq = f["/session/sets/set_001_sample_main/acquisition"]
         assert acq["distance"][()] == 170.0 and acq["distance"].attrs["units"] == "mm"
         assert acq["voltage"][()] == 40.0 and acq["voltage"].attrs["units"] == "kV"
         assert acq["current"].attrs["units"] == "uA"
         assert acq["exposure_time"].attrs["units"] == "s"
         # set attrs are pure identity now — no physical quantities mixed in
-        assert "voltage_kv" not in f["/session/sets/set_001"].attrs
+        assert "voltage_kv" not in f["/session/sets/set_001_sample_main"].attrs
         # measurements are slim references — detector specs live in the catalog
-        meas = f["/session/sets/set_001/measurements/det_1"]
+        meas = f["/session/sets/set_001_sample_main/measurements/det_1"]
         assert meas.attrs["detector_id"] == 1
         assert "x_pixel_size" not in meas               # spec lives in catalog, not here
         det = f["/session/instrument/detector_sets/ds_1/detectors/det_1"]

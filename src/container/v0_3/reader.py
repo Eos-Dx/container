@@ -110,7 +110,16 @@ class SessionContainer:
         return out
 
     def _set_by_index(self, f, set_idx: int):
-        return f.get(f"{S.GROUP_SETS}/{S.format_set_id(set_idx)}")
+        # Group names are `set_<idx>_<label>`; the label is display-only, so
+        # lookups match on the index prefix.
+        grp = f.get(S.GROUP_SETS)
+        if grp is None:
+            return None
+        prefix = f"set_{set_idx:03d}_"
+        for name in grp:
+            if name.startswith(prefix):
+                return grp[name]
+        return None
 
     def measurements(self, set_idx: int) -> List[Dict[str, Any]]:
         out: List[Dict[str, Any]] = []
@@ -144,13 +153,17 @@ class SessionContainer:
             return grp[rel_key][()]
 
     def qc(self, set_idx: int) -> Dict[str, Dict[str, Any]]:
+        """Results keyed by @check_name, in priority order (group names sort
+        by the priority-ordered index prefix)."""
         out: Dict[str, Dict[str, Any]] = {}
         with h5py.File(self.file_path, "r") as f:
             grp = self._set_by_index(f, set_idx)
             if grp is None or S.GROUP_QC not in grp:
                 return out
-            for name, check in grp[S.GROUP_QC].items():
-                out[name] = {k: _decode(v) for k, v in check.attrs.items()}
+            qc = grp[S.GROUP_QC]
+            for name in sorted(qc):
+                attrs = {k: _decode(v) for k, v in qc[name].attrs.items()}
+                out[attrs[S.ATTR_CHECK_NAME]] = attrs
         return out
 
     def integration(self, set_idx: int) -> Optional[Tuple[np.ndarray, np.ndarray]]:

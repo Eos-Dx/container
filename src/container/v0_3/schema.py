@@ -30,6 +30,7 @@ from container.common.constants import (  # noqa: F401  (re-exported for writers
     NX_ROOT,
     NX_SAMPLE,
 )
+from container.common.ids import sanitize_filename_token
 
 # ================== Self-description =======================
 SCHEMA_VERSION = "0.3"
@@ -172,8 +173,10 @@ DS_MASK = "mask"
 DS_DETECTOR_META = "detector_meta"   # .dsc header bytes (directly file-related)
 
 # ================== QC attributes =========================
+ATTR_CHECK_NAME = "check_name"
 ATTR_VERDICT = "verdict"
 ATTR_MESSAGE = "message"
+ATTR_PRIORITY = "priority"   # binding priority (execution scheduling)
 ATTR_QC_CREATED_AT = "created_at"
 DS_METRICS = "metrics"
 DS_PARAMETERS_SNAPSHOT = "parameters_snapshot"
@@ -235,13 +238,28 @@ DS_DEPENDENCIES = "dependencies"
 
 
 # ================== ID formatters =========================
-def format_set_id(index: int) -> str:
-    """1-based set group name: set_001, set_002, ..."""
-    return f"set_{index:03d}"
+# Group names carry a zero-padded index plus a human label. The index is
+# mandatory where order is semantic (sets = measured order, steps = execution
+# order, qc = priority order) because HDF5 iterates children alphabetically;
+# the label makes the tree readable without opening attributes. Lookups parse
+# the index prefix only — labels are display, never identity.
+def _label_token(label: str) -> str:
+    return sanitize_filename_token(label).lower()
 
 
-def format_step_id(index: int) -> str:
-    return f"step_{index:03d}"
+def format_set_id(index: int, label: str) -> str:
+    """1-based set group name in measured order: set_001_dark."""
+    return f"set_{index:03d}_{_label_token(label)}"
+
+
+def format_step_id(index: int, name: str) -> str:
+    """1-based step group name in execution order: step_01_denoise_normalize."""
+    return f"step_{index:02d}_{_label_token(name)}"
+
+
+def format_qc_id(index: int, check_name: str) -> str:
+    """1-based qc group name in priority order: qc_01_beam_intensity."""
+    return f"qc_{index:02d}_{_label_token(check_name)}"
 
 
 def format_dep_id(index: int) -> str:

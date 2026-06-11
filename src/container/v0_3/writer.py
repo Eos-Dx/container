@@ -60,6 +60,9 @@ class QCResultPayload:
     metrics: dict
     parameters_snapshot: dict
     created_at: str
+    # binding priority — producers supply results sorted by it (the group-name
+    # index encodes that order; the raw value rides along as an attr)
+    priority: Optional[int] = None
 
 
 @dataclasses.dataclass
@@ -206,11 +209,14 @@ def build_session_container(
     session_uid = payload.session_uid
     container_id = generate_container_id()
 
-    # Filename keys on session_uid (stable per session → a rebuild overwrites the
-    # same name). session_uid is an arbitrary producer token, so sanitise it.
-    uid_token = sanitize_filename_token(session_uid)
+    # Filename leads with the human identity (category, pk, sample) and keeps a
+    # short session_uid token for global uniqueness — deterministic per session
+    # (same-day rebuild overwrites the same name). session_uid is an arbitrary
+    # producer token, so sanitise it.
+    uid_token = sanitize_filename_token(session_uid)[:8]
     sample_token = sanitize_filename_token(payload.sample_clinical_name or payload.machine_serial)
-    filename = f"session_{uid_token}_{sample_token}_{today_token()}.nxs.h5"
+    filename = (f"{payload.session_category.lower()}_{payload.session_pk}_"
+                f"{sample_token}_{today_token()}_{uid_token}.nxs.h5")
     folder = Path(folder)
     folder.mkdir(parents=True, exist_ok=True)
     file_path = folder / filename
@@ -294,7 +300,8 @@ def _write_session(f, payload: SessionPayload, session_uid: str) -> None:
 
     sets = H.make_group(session, "sets")
     for idx, set_payload in enumerate(payload.sets, start=1):
-        _write_set(sets, S.format_set_id(idx), set_payload)
+        _write_set(sets, S.format_set_id(idx, set_payload.measurement_type_name),
+                   set_payload)
 
 
 def _write_detector_sets(instrument, detector_sets: List[DetectorSetSpec]) -> None:
@@ -384,8 +391,8 @@ def _write_set(parent, name: str, sp: SetPayload) -> None:
 
     if sp.qc_results:
         qc = H.make_group(grp, S.GROUP_QC)
-        for result in sp.qc_results:
-            _write_qc(qc, result)
+        for idx, result in enumerate(sp.qc_results, start=1):
+            _write_qc(qc, idx, result)
 
     if sp.integration is not None:
         _write_integration(grp, sp.integration)
@@ -437,10 +444,14 @@ def _write_measurement(parent, m: MeasurementPayload, detector_set_id: int) -> N
         H.write_bytes_dataset(grp, S.DS_DETECTOR_META, m.detector_meta)
 
 
-def _write_qc(parent, result: QCResultPayload) -> None:
-    grp = H.make_group(parent, result.check_name, attrs={
+def _write_qc(parent, idx: int, result: QCResultPayload) -> None:
+    # Group name = priority-ordered index + check name; identity stays in
+    # @check_name (readers key on the attr, never parse the group name).
+    grp = H.make_group(parent, S.format_qc_id(idx, result.check_name), attrs={
+        S.ATTR_CHECK_NAME: result.check_name,
         S.ATTR_VERDICT: result.verdict,
         S.ATTR_MESSAGE: result.message,
+        S.ATTR_PRIORITY: result.priority,
         S.ATTR_QC_CREATED_AT: result.created_at,
     })
     H.write_json_dataset(grp, S.DS_METRICS, result.metrics)
@@ -467,7 +478,7 @@ def _write_processing(parent, config: dict, steps: List[ProcessingStepPayload]) 
     if config:
         H.write_json_dataset(grp, S.DS_PROCESSING_CONFIG, config)
     for idx, step in enumerate(steps, start=1):
-        step_grp = H.make_group(grp, S.format_step_id(idx), attrs={
+        step_grp = H.make_group(grp, S.format_step_id(idx, step.step_name), attrs={
             S.ATTR_STEP_NAME: step.step_name,
             S.ATTR_STEP_STARTED_AT: step.started_at,
             S.ATTR_STEP_FINISHED_AT: step.finished_at,

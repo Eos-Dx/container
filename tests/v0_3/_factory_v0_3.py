@@ -67,7 +67,8 @@ def make_set(pk=99, measurements=None, qc=True, integration=True,
         qc_results = [QCResultPayload(
             check_name="symmetry", verdict="PASS", message="ok",
             metrics={"symmetry_pct": 98.5, "reference_set_id": 5},
-            parameters_snapshot={"x1": 1, "x2": 2}, created_at="2026-06-08 10:01:00")]
+            parameters_snapshot={"x1": 1, "x2": 2}, created_at="2026-06-08 10:01:00",
+            priority=10)]
     integ = None
     if integration:
         integ = IntegrationPayload(q=np.linspace(0, 30, 2000),
