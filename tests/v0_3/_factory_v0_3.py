@@ -53,6 +53,7 @@ def make_measurement(pk=7, detector_id=1, **over):
         data=np.full((4, 4), detector_id, dtype=np.float32),
         mask=np.ones((4, 4), dtype=np.uint8),
         detector_meta=b"<.dsc header>",
+        raw_file=f"<raw vendor bytes det {detector_id}>".encode(),
     )
     kw.update(over)
     return MeasurementPayload(**kw)

@@ -14,10 +14,11 @@ set holds the decoded ``raw`` composite + ``processed`` matrix + 1D
 detector is kept full (frame + mask + meta) even though ``set/raw`` already
 stitches all detectors — redundancy on purpose.
 
-The unsummed sub-frames are NOT embedded (constituent, not directly usable), and
-ALL original vendor files ship in a sibling ``.zip`` keyed by the same
-``session_uid`` (the complete cold archive; EoScan-side follow-up). The h5 keeps
-the per-detector file-path pointers (``file_path`` etc.) into that zip.
+The unsummed sub-frames are NOT embedded (constituent, not directly usable). Each
+measurement's original vendor source file is embedded as ``raw_file`` so the h5 is
+self-contained; ALL original vendor files ALSO ship in a sibling ``.zip`` keyed by
+the same ``session_uid`` (the complete cold archive; EoScan-side follow-up), and the
+h5 keeps the per-detector file-path pointers (``file_path`` etc.) into that zip.
 """
 
 import dataclasses
@@ -122,7 +123,8 @@ class MeasurementPayload:
     numeric ``detector_id``. Carries the per-detector identity, the source-file
     pointers (which resolve into the sibling raw ``.zip``), and the *decoded*
     products: the 2D ``data`` frame this detector produced and its decoded
-    ``mask``. No vendor bytes — originals live in the zip."""
+    ``mask``. The original vendor source bytes are embedded as ``raw_file`` so
+    the container is self-contained; the zip stays a redundant external copy."""
     measurement_pk: int
     measurement_uid: str        # globally-unique id (supplied by the producer)
     detector_id: int            # references a DetectorSpec in the session catalog
@@ -132,6 +134,7 @@ class MeasurementPayload:
     data: Optional[Any] = None  # decoded 2D frame (what this detector produced)
     mask: Optional[Any] = None  # decoded 2D mask array
     detector_meta: Optional[Union[bytes, Path, str]] = None  # .dsc header blob
+    raw_file: Optional[Union[bytes, Path, str]] = None  # original vendor source bytes
 
 
 @dataclasses.dataclass
@@ -447,6 +450,8 @@ def _write_measurement(parent, m: MeasurementPayload, det_label: str) -> None:
         H.write_array_dataset(grp, S.DS_MASK, np.asarray(m.mask))
     if m.detector_meta is not None:
         H.write_bytes_dataset(grp, S.DS_DETECTOR_META, m.detector_meta)
+    if m.raw_file is not None:
+        H.write_bytes_dataset(grp, S.DS_RAW_FILE, m.raw_file)
 
 
 def _write_qc(parent, idx: int, result: QCResultPayload) -> None:

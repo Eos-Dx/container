@@ -142,6 +142,17 @@ class SessionContainer:
             m = _child_by_prefix(grp[S.GROUP_MEASUREMENTS], f"det_{detector_id}_")
             return m[S.DS_DATA][()] if m is not None and S.DS_DATA in m else None
 
+    def raw_file(self, set_idx: int, detector_id: int) -> Optional[bytes]:
+        """Original vendor source bytes (.gfrm/.png/.h5) a detector wrote."""
+        with h5py.File(self.file_path, "r") as f:
+            grp = self._set_by_index(f, set_idx)
+            if grp is None or S.GROUP_MEASUREMENTS not in grp:
+                return None
+            m = _child_by_prefix(grp[S.GROUP_MEASUREMENTS], f"det_{detector_id}_")
+            if m is None or S.DS_RAW_FILE not in m:
+                return None
+            return m[S.DS_RAW_FILE][()].tobytes()
+
     def raw(self, set_idx: int) -> Optional[np.ndarray]:
         """Set-level decoded raw composite (stitched across detectors)."""
         return self._set_dataset(set_idx, f"{S.DS_RAW_2D}/{S.DS_DATA}")

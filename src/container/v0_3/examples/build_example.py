@@ -47,7 +47,7 @@ DETECTOR_SETS = [
 
 
 def _measurement(pk, detector_id):
-    # decoded products only — original files live in the sibling raw zip
+    # decoded products + the embedded original vendor source bytes (raw_file)
     return MeasurementPayload(
         measurement_pk=pk, measurement_uid=uuid.uuid4().hex, detector_id=detector_id,
         file_path=f"/data/sample_42/det_{detector_id}.txt",
@@ -56,6 +56,7 @@ def _measurement(pk, detector_id):
         data=np.random.randint(0, 500, size=(16, 16)).astype(np.float32),
         mask=np.ones((16, 16), dtype=np.uint8),
         detector_meta=b"<.dsc PIXet detector header>",
+        raw_file=f"<.gfrm vendor frame bytes det {detector_id}>".encode(),
     )
 
 

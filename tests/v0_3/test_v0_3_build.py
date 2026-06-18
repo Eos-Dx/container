@@ -26,6 +26,8 @@ def test_build_roundtrip_and_autodetect(tmp_path):
     # per-detector decoded frame round-trips (det_1 frame filled with 1.0)
     frame = c.frame(1, 1)
     assert frame.shape == (4, 4) and frame[0, 0] == 1.0
+    # original vendor source bytes embedded + round-trip
+    assert c.raw_file(1, 1) == b"<raw vendor bytes det 1>"
 
 
 def test_set_and_detector_counts(tmp_path):

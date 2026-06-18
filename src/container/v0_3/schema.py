@@ -170,6 +170,7 @@ ATTR_MASK_FILE_PATH = "mask_file_path"
 # the .dsc detector-meta header, kept as a blob since it's tied to the file.
 DS_MASK = "mask"
 DS_DETECTOR_META = "detector_meta"   # .dsc header bytes (directly file-related)
+DS_RAW_FILE = "raw_file"             # original vendor source bytes (.gfrm/.png/.h5)
 
 # ================== QC attributes =========================
 ATTR_CHECK_NAME = "check_name"
