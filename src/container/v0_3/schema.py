@@ -219,6 +219,9 @@ FIELD_BEAM_ENERGY = "beam_energy"
 FIELD_SAMPLE_NAME = "name"
 FIELD_PATIENT_NAME = "patient_name"
 FIELD_SAMPLE_TYPE = "sample_type"
+# optional free-form descriptive sample/patient metadata (JSON), e.g. clinical
+# attributes. EoScan's live export leaves it unset; backfill producers populate it.
+DS_SAMPLE_METADATA = "metadata"
 # set geometry + per-set acquisition (source settings snapshot for this set)
 FIELD_DISTANCE = "distance"
 FIELD_VOLTAGE = "voltage"

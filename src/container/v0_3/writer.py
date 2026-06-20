@@ -191,6 +191,7 @@ class SessionPayload:
     sample_clinical_name: Optional[str] = None
     patient_clinical_name: Optional[str] = None
     sample_type_name: Optional[str] = None
+    sample_metadata: Optional[dict] = None   # free-form descriptive (e.g. clinical) JSON
     protocol_snapshot: Optional[dict] = None
     dependencies: List[DependencyRef] = dataclasses.field(default_factory=list)
     # provenance only — which deployment produced this file; NOT used for ids
@@ -261,7 +262,7 @@ def _write_session(f, payload: SessionPayload, session_uid: str) -> None:
     # NXsample — names as string-field datasets. Omitted entirely when the
     # session has no sample (e.g. CALIBRATION/SYSTEM) rather than left empty.
     if any((payload.sample_clinical_name, payload.patient_clinical_name,
-            payload.sample_type_name)):
+            payload.sample_type_name, payload.sample_metadata)):
         sample = H.make_group(session, "sample", S.NX_SAMPLE)
         if payload.sample_clinical_name is not None:
             H.write_scalar_dataset(sample, S.FIELD_SAMPLE_NAME, payload.sample_clinical_name)
@@ -269,6 +270,8 @@ def _write_session(f, payload: SessionPayload, session_uid: str) -> None:
             H.write_scalar_dataset(sample, S.FIELD_PATIENT_NAME, payload.patient_clinical_name)
         if payload.sample_type_name is not None:
             H.write_scalar_dataset(sample, S.FIELD_SAMPLE_TYPE, payload.sample_type_name)
+        if payload.sample_metadata:
+            H.write_json_dataset(sample, S.DS_SAMPLE_METADATA, payload.sample_metadata)
 
     # NXinstrument — machine identity as attrs; physics as datasets-with-units.
     instrument = H.make_group(session, "instrument", S.NX_INSTRUMENT, {

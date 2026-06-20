@@ -131,6 +131,23 @@ def test_metadata_payload(tmp_path):
         assert f["/session/sample/sample_type"][()].decode() == "tissue"
 
 
+def test_sample_metadata_optional_and_roundtrips(tmp_path):
+    # absent by default — no metadata dataset under NXsample, accessor returns None
+    _, _, path = build(tmp_path)
+    c = open_container(path)
+    assert c.sample_metadata() is None
+    with h5py.File(path, "r") as f:
+        assert "metadata" not in f["/session/sample"]
+
+    # populated — round-trips via the parsed accessor, stays out of the flat view
+    clinical = {"age": 66, "birads": "BI-RADS 2 Benign", "grade": "BENIGN"}
+    _, _, path2 = build(tmp_path, sample_metadata=clinical)
+    c2 = open_container(path2)
+    assert c2.sample_metadata() == clinical
+    assert "metadata" not in c2.session_meta()
+    assert c2.session_meta()["name"] == "PAT001-S01"
+
+
 def test_physics_scalars_are_fields_with_units(tmp_path):
     """Physics quantities are datasets carrying @units (NeXus tool hygiene)."""
     _, _, path = build(tmp_path)

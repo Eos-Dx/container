@@ -59,10 +59,22 @@ class SessionContainer:
                 session = f[S.GROUP_SESSION]
                 meta.update({k: _decode(v) for k, v in session.attrs.items()})
                 if "sample" in session:
-                    meta.update(_read_fields(session["sample"]))
+                    sample_fields = _read_fields(session["sample"])
+                    # the descriptive metadata is a JSON blob, not a scalar field —
+                    # exposed parsed via sample_metadata(), kept out of the flat view.
+                    sample_fields.pop(S.DS_SAMPLE_METADATA, None)
+                    meta.update(sample_fields)
                 if "instrument" in session:
                     meta.update(_read_fields(session["instrument"]))
             return meta
+
+    def sample_metadata(self) -> Optional[Dict[str, Any]]:
+        """Free-form descriptive (e.g. clinical) sample metadata, or None."""
+        with h5py.File(self.file_path, "r") as f:
+            session = f.get(S.GROUP_SESSION)
+            if session is None or "sample" not in session:
+                return None
+            return read_json_dataset(session["sample"], S.DS_SAMPLE_METADATA, default=None)
 
     def dependencies(self) -> List[Dict[str, Any]]:
         with h5py.File(self.file_path, "r") as f:

@@ -109,6 +109,7 @@ def build() -> str:
         beam_energy_keV=8.0478, source_type="Cu", started_at="2026-06-08 09:00:00",
         completed_at="2026-06-08 10:30:00", sample_clinical_name="PAT001-S01",
         patient_clinical_name="PAT001", sample_type_name="tissue",
+        sample_metadata={"age": 66, "breast_density": "b", "birads": "BI-RADS 2 Benign"},
         protocol_snapshot={"protocol_id": 1, "name": "Standard tissue scan",
                            "category": "SAMPLE", "blocks": [{"sequence_order": 0,
                            "repeat_count": 1, "steps": [{"measurement_type_name": "sample_main"}]}]},
