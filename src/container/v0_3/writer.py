@@ -167,6 +167,9 @@ class SetPayload:
     processing_steps: List[ProcessingStepPayload] = dataclasses.field(default_factory=list)
     poni_text: Optional[str] = None
     preview: Optional[Union[bytes, Path, str]] = None
+    # producer-declared split: keys here become browsable group attrs, ``metadata``
+    # is the JSON blob. The producer owns the partition (no inference).
+    metadata_attrs: dict = dataclasses.field(default_factory=dict)
 
 
 @dataclasses.dataclass
@@ -191,7 +194,8 @@ class SessionPayload:
     sample_clinical_name: Optional[str] = None
     patient_clinical_name: Optional[str] = None
     sample_type_name: Optional[str] = None
-    sample_metadata: Optional[dict] = None   # free-form descriptive (e.g. clinical) JSON
+    sample_metadata: Optional[dict] = None   # free-form descriptive (e.g. clinical) JSON blob
+    sample_metadata_attrs: dict = dataclasses.field(default_factory=dict)  # → NXsample attrs
     protocol_snapshot: Optional[dict] = None
     dependencies: List[DependencyRef] = dataclasses.field(default_factory=list)
     # provenance only — which deployment produced this file; NOT used for ids
@@ -199,6 +203,31 @@ class SessionPayload:
     producer_software: str = "unknown"
     producer_version: str = "unknown"
     sets: List[SetPayload] = dataclasses.field(default_factory=list)
+
+
+# attr names a set group already owns (identity/labels) — a producer-declared
+# metadata_attrs key may not collide with these (would clobber identity).
+_SET_RESERVED = frozenset({
+    S.ATTR_NX_CLASS, S.ATTR_DEFAULT, S.ATTR_SET_PK, S.ATTR_SET_UID,
+    S.ATTR_WORKFLOW_ID, S.ATTR_BATCH_ID, S.ATTR_DETECTOR_SET_ID, S.ATTR_STATUS,
+    S.ATTR_IS_APPROVED, S.ATTR_MEASUREMENT_TYPE_NAME, S.ATTR_MEASUREMENT_TYPE_CATEGORY,
+    S.ATTR_WORKFLOW_KEY, S.ATTR_SAMPLE_NAME, S.ATTR_CREATED_AT_SET,
+})
+# NXsample owns these (nx_class attr + the structural field datasets) — a
+# sample_metadata_attrs key may not shadow them.
+_SAMPLE_RESERVED = frozenset({
+    S.ATTR_NX_CLASS, S.FIELD_SAMPLE_NAME, S.FIELD_PATIENT_NAME,
+    S.FIELD_SAMPLE_TYPE, S.DS_SAMPLE_METADATA,
+})
+
+
+def _write_attrs_checked(group, attrs: dict, reserved: frozenset, where: str) -> None:
+    """Write producer-declared metadata attrs, raising if any key collides with a
+    reserved identity name. ``None`` values are skipped (attrs can't hold null)."""
+    collisions = reserved & attrs.keys()
+    if collisions:
+        raise ValueError(f"{where}: keys collide with reserved names {sorted(collisions)}")
+    H.set_attrs(group, attrs)
 
 
 # ====================== Builder ======================
@@ -262,7 +291,8 @@ def _write_session(f, payload: SessionPayload, session_uid: str) -> None:
     # NXsample — names as string-field datasets. Omitted entirely when the
     # session has no sample (e.g. CALIBRATION/SYSTEM) rather than left empty.
     if any((payload.sample_clinical_name, payload.patient_clinical_name,
-            payload.sample_type_name, payload.sample_metadata)):
+            payload.sample_type_name, payload.sample_metadata,
+            payload.sample_metadata_attrs)):
         sample = H.make_group(session, "sample", S.NX_SAMPLE)
         if payload.sample_clinical_name is not None:
             H.write_scalar_dataset(sample, S.FIELD_SAMPLE_NAME, payload.sample_clinical_name)
@@ -270,6 +300,9 @@ def _write_session(f, payload: SessionPayload, session_uid: str) -> None:
             H.write_scalar_dataset(sample, S.FIELD_PATIENT_NAME, payload.patient_clinical_name)
         if payload.sample_type_name is not None:
             H.write_scalar_dataset(sample, S.FIELD_SAMPLE_TYPE, payload.sample_type_name)
+        if payload.sample_metadata_attrs:
+            _write_attrs_checked(sample, payload.sample_metadata_attrs,
+                                 _SAMPLE_RESERVED, "sample_metadata_attrs")
         if payload.sample_metadata:
             H.write_json_dataset(sample, S.DS_SAMPLE_METADATA, payload.sample_metadata)
 
@@ -392,6 +425,8 @@ def _write_set(parent, name: str, sp: SetPayload, ds_labels: dict, det_labels: d
         H.write_scalar_dataset(acq, S.FIELD_STAGE_POSITION,
                                sp.stage_position, units=S.UNIT_MM)
 
+    if sp.metadata_attrs:
+        _write_attrs_checked(grp, sp.metadata_attrs, _SET_RESERVED, "metadata_attrs")
     if sp.metadata:
         H.write_json_dataset(grp, S.DS_METADATA, sp.metadata)
 

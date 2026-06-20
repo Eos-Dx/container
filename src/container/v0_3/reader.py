@@ -15,10 +15,14 @@ from . import validator as V
 def _read_fields(group):
     """Decoded {attr/scalar-dataset name -> value} for a metadata group."""
     out = {k: _decode(v) for k, v in group.attrs.items()}
-    for name, obj in group.items():
-        if isinstance(obj, h5py.Dataset) and obj.shape == ():
-            out[name] = _decode(obj[()])
+    out.update(_scalar_datasets(group))
     return out
+
+
+def _scalar_datasets(group):
+    """Decoded {name -> value} for the group's scalar (shape ()) datasets only."""
+    return {name: _decode(obj[()]) for name, obj in group.items()
+            if isinstance(obj, h5py.Dataset) and obj.shape == ()}
 
 
 def _child_by_prefix(group, prefix):
@@ -59,9 +63,10 @@ class SessionContainer:
                 session = f[S.GROUP_SESSION]
                 meta.update({k: _decode(v) for k, v in session.attrs.items()})
                 if "sample" in session:
-                    sample_fields = _read_fields(session["sample"])
-                    # the descriptive metadata is a JSON blob, not a scalar field —
-                    # exposed parsed via sample_metadata(), kept out of the flat view.
+                    # structural identity = scalar datasets; descriptive metadata
+                    # lives in group attrs (+ a leftover JSON blob), surfaced via
+                    # sample_metadata() and kept out of this flat identity view.
+                    sample_fields = _scalar_datasets(session["sample"])
                     sample_fields.pop(S.DS_SAMPLE_METADATA, None)
                     meta.update(sample_fields)
                 if "instrument" in session:
@@ -69,12 +74,21 @@ class SessionContainer:
             return meta
 
     def sample_metadata(self) -> Optional[Dict[str, Any]]:
-        """Free-form descriptive (e.g. clinical) sample metadata, or None."""
+        """Free-form descriptive (e.g. clinical) sample metadata, or None.
+
+        Reassembled from the flat scalar attrs on the sample group plus any
+        nested/None leftovers kept in the JSON blob."""
         with h5py.File(self.file_path, "r") as f:
             session = f.get(S.GROUP_SESSION)
             if session is None or "sample" not in session:
                 return None
-            return read_json_dataset(session["sample"], S.DS_SAMPLE_METADATA, default=None)
+            sample = session["sample"]
+            out = {k: _decode(v) for k, v in sample.attrs.items()
+                   if k != S.ATTR_NX_CLASS}
+            blob = read_json_dataset(sample, S.DS_SAMPLE_METADATA, default=None)
+            if blob:
+                out.update(blob)
+            return out or None
 
     def dependencies(self) -> List[Dict[str, Any]]:
         with h5py.File(self.file_path, "r") as f:
@@ -127,6 +141,9 @@ class SessionContainer:
                          **{k: _decode(v) for k, v in grp[name].attrs.items()}}
                 if S.GROUP_ACQUISITION in grp[name]:
                     entry[S.GROUP_ACQUISITION] = _read_fields(grp[name][S.GROUP_ACQUISITION])
+                blob = read_json_dataset(grp[name], S.DS_METADATA, default=None)
+                if blob:
+                    entry[S.DS_METADATA] = blob
                 out.append(entry)
         return out
 

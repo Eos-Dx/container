@@ -7,6 +7,8 @@ from container import open_container
 from container.v0_3 import build_session_container
 from container.v0_3.utils import read_json_dataset
 
+import pytest
+
 from _factory_v0_3 import make_measurement, make_session, make_set, sess_uid
 
 
@@ -146,6 +148,36 @@ def test_sample_metadata_optional_and_roundtrips(tmp_path):
     assert c2.sample_metadata() == clinical
     assert "metadata" not in c2.session_meta()
     assert c2.session_meta()["name"] == "PAT001-S01"
+
+
+def test_metadata_attrs_explicit_split(tmp_path):
+    # producer declares which keys become attrs; the rest stays a JSON blob
+    s = make_set(metadata_attrs={"position": "P2", "transmission_pct": 10.0},
+                 metadata={"backfill_provenance": {"era": "v1"}})
+    _, _, path = build_session_container(
+        make_session(sets=[s], sample_metadata_attrs={"age": 66, "grade": "BENIGN"}),
+        tmp_path)
+    with h5py.File(path, "r") as f:
+        sg = f["/session/sets/set_001_sample_main"]
+        assert sg.attrs["position"] == "P2"
+        assert sg.attrs["transmission_pct"] == 10.0
+        assert read_json_dataset(sg, "metadata")["backfill_provenance"]["era"] == "v1"
+        # promoted clinical lands on NXsample; no blob when fully promoted
+        assert f["/session/sample"].attrs["age"] == 66
+        assert "metadata" not in f["/session/sample"]
+    c = open_container(path)
+    set0 = c.sets()[0]
+    assert set0["position"] == "P2"
+    assert set0["metadata"]["backfill_provenance"]["era"] == "v1"
+    assert c.sample_metadata() == {"age": 66, "grade": "BENIGN"}
+    assert "age" not in c.session_meta()   # stays out of the flat identity view
+
+
+def test_metadata_attrs_reserved_collision_raises(tmp_path):
+    # an explicit attr key shadowing a set identity attr is a loud build error
+    s = make_set(metadata_attrs={"status": "SNEAKY"})
+    with pytest.raises(ValueError, match="reserved"):
+        build_session_container(make_session(sets=[s]), tmp_path)
 
 
 def test_physics_scalars_are_fields_with_units(tmp_path):
