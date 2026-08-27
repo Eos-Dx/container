@@ -16,9 +16,10 @@ Usage:
     container = SessionContainer.open('path/to/file.h5')
 """
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 
 from .loader import open_container, open_container_bundle
+from .upload import AlreadyUploaded, UploadError, upload_zip
 from .manager import (
     create_container_bundle,
     is_container_locked,
@@ -33,5 +34,8 @@ __all__ = [
     "is_container_locked",
     "lock_container",
     "unlock_container",
+    "upload_zip",
+    "UploadError",
+    "AlreadyUploaded",
     "__version__",
 ]

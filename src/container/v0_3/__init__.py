@@ -14,7 +14,9 @@ __version__ = "0.3.0"
 from . import schema
 from . import utils
 from . import validator
+from . import manifest
 from . import writer
+from .manifest import MANIFEST_VERSION, build_manifest, write_zip
 from .reader import SessionContainer, TechnicalContainer
 from .writer import (
     DependencyRef,
@@ -34,6 +36,10 @@ __all__ = [
     "utils",
     "validator",
     "writer",
+    "manifest",
+    "MANIFEST_VERSION",
+    "build_manifest",
+    "write_zip",
     "SessionContainer",
     "TechnicalContainer",
     "build_session_container",

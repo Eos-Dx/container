@@ -26,12 +26,30 @@ Versioned implementations are provided under:
 
 - `container.v0_1`
 - `container.v0_2`
+- `container.v0_3`
+
+## EosCloud upload contract
+
+The library is the single writer of the session upload zip and the single
+upload client, shared by every producer (EoScan, `container_prep`):
+
+- `container.v0_3.write_zip(payload, frame_source, out_path, *, header_source=None, mask_source=None)`
+  — `manifest.json` (manifest v1, `container.v0_3.MANIFEST_VERSION`) plus the
+  original frame bytes, headers and masks. `frame_source(measurement_uid)`
+  returns bytes or a path; producers resolve frames from their own layouts.
+- `container.upload_zip(zip_path, session_uid, *, url, token)` — sha256 →
+  presign → PUT → complete against an EosCloud instance. Stdlib only, no AWS
+  SDK. Raises `AlreadyUploaded` (409) or `UploadError`.
+
+Neither reads settings nor takes an ORM object; URL, token and frame
+resolution are explicit arguments.
 
 ## Layout
 
 - `src/container/` contains the installable Python package.
 - `src/container/v0_1/` contains legacy format support.
-- `src/container/v0_2/` contains the current NeXus-based container model.
+- `src/container/v0_2/` contains the NeXus-based DIFRA container model.
+- `src/container/v0_3/` contains the current XRD session container and the EosCloud upload contract.
 - `tests/` contains standalone import and behavior checks.
 
 ## Development
