@@ -163,10 +163,19 @@ def _validate_sets(session, catalog, err, warn):
                 err(mpath, "measurement missing detector_id reference")
             elif int(det_id) not in allowed_det_ids:
                 err(mpath, f"detector_id {det_id} not in detector set {ds_id}'s catalog")
+            # Frame-data units: required of current producers (the writer
+            # enforces it), absent from pre-units archives — warn, not error.
+            m_data = det.get(S.DS_DATA)
+            if m_data is not None and S.ATTR_UNITS not in m_data.attrs:
+                warn(mpath, "measurement data lacks @units")
 
         for prod in (S.DS_RAW_2D, S.DS_PROCESSED):
             if prod in set_grp:
                 _validate_2d(set_grp[prod], f"{path}/{prod}", err)
+        if S.DS_RAW_2D in set_grp:
+            raw_data = set_grp[S.DS_RAW_2D].get(S.DS_DATA)
+            if raw_data is not None and S.ATTR_UNITS not in raw_data.attrs:
+                warn(f"{path}/{S.DS_RAW_2D}", "raw frame data lacks @units")
 
         if S.GROUP_INTEGRATION in set_grp:
             _validate_integration(set_grp[S.GROUP_INTEGRATION],

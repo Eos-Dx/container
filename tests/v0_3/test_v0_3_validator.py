@@ -60,3 +60,13 @@ def test_bad_verdict_errors(tmp_path):
     ok, errs = _errors(path)
     assert not ok
     assert any("verdict" in e.message for e in errs)
+
+
+def test_missing_frame_units_warns_not_errors(tmp_path):
+    """Pre-units archives lack @units on frame data: warning, never error."""
+    path = _build(tmp_path)
+    with h5py.File(path, "r+") as f:
+        del f["/session/sets/set_001_sample_main/measurements/det_1_det-a/data"].attrs["units"]
+    ok, errs = validate_session_container(path)
+    assert ok
+    assert any("lacks @units" in e.message for e in errs)

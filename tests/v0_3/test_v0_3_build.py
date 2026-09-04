@@ -217,3 +217,17 @@ def test_write_once_no_lifecycle_attrs(tmp_path):
             assert forbidden not in f.attrs
     # opening again read-only works
     assert open_container(path) is not None
+
+
+def test_frame_units_stamped_on_raw_and_measurement_data(tmp_path):
+    _, _, path = build(tmp_path, sets=[make_set(raw=np.ones((4, 5)))])
+    with h5py.File(path, "r") as f:
+        s = f["/session/sets/set_001_sample_main"]
+        assert s["raw/data"].attrs["units"] == "photon"
+        assert s["measurements/det_1_det-a/data"].attrs["units"] == "photon"
+
+
+def test_frame_data_without_frame_units_refused(tmp_path):
+    """"raw" only means "as read" — the writer refuses undeclared units."""
+    with pytest.raises(ValueError, match="frame_units"):
+        build(tmp_path, sets=[make_set(frame_units=None)])

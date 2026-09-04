@@ -212,6 +212,13 @@ UNIT_UA = "uA"
 UNIT_S = "s"
 UNIT_PIXEL = "pixel"
 
+# Frame-data units — the @units attr on set-level raw/data and each
+# measurement data dataset. "raw" in the tree means "as read, un-postprocessed";
+# the *unit* of that read changed over producer history (legacy corpus: ADU
+# counts; EoScan since 2026-07: photons), so the producer must declare it.
+UNIT_PHOTON = "photon"
+UNIT_ADU = "adu"
+
 # instrument (NXinstrument) fields
 FIELD_WAVELENGTH = "wavelength"
 FIELD_BEAM_ENERGY = "beam_energy"

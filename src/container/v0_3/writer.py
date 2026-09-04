@@ -161,6 +161,12 @@ class SetPayload:
     processing_config: dict
     measurements: List[MeasurementPayload]
     raw: Optional[Any] = None
+    # Unit of the decoded frame data (set-level ``raw/data`` and every
+    # measurement ``data``), e.g. schema.UNIT_PHOTON / UNIT_ADU. Deliberately
+    # no default: "raw" only means "as read", and what a read yields has
+    # differed across producers — the writer refuses to build frame data
+    # whose unit nobody declared.
+    frame_units: Optional[str] = None
     processed: Optional[Any] = None
     qc_results: List[QCResultPayload] = dataclasses.field(default_factory=list)
     integration: Optional[IntegrationPayload] = None
@@ -430,14 +436,21 @@ def _write_set(parent, name: str, sp: SetPayload, ds_labels: dict, det_labels: d
     if sp.metadata:
         H.write_json_dataset(grp, S.DS_METADATA, sp.metadata)
 
+    # Frame data may not be written unitless — see SetPayload.frame_units.
+    if (sp.raw is not None or any(m.data is not None for m in sp.measurements)) \
+            and not sp.frame_units:
+        raise ValueError(
+            f"set {sp.set_uid}: frame data present but frame_units undeclared "
+            f"(schema.UNIT_PHOTON / schema.UNIT_ADU)")
+
     if sp.raw is not None:
-        _write_2d_product(grp, S.DS_RAW_2D, sp.raw)
+        _write_2d_product(grp, S.DS_RAW_2D, sp.raw, units=sp.frame_units)
     if sp.processed is not None:
         _write_2d_product(grp, S.DS_PROCESSED, sp.processed)
 
     measurements = H.make_group(grp, S.GROUP_MEASUREMENTS)
     for m in sp.measurements:
-        _write_measurement(measurements, m, det_labels[m.detector_id])
+        _write_measurement(measurements, m, det_labels[m.detector_id], sp.frame_units)
 
     if sp.qc_results:
         qc = H.make_group(grp, S.GROUP_QC)
@@ -459,12 +472,14 @@ def _write_set(parent, name: str, sp: SetPayload, ds_labels: dict, det_labels: d
             H.write_bytes_dataset(artifacts, S.DS_PREVIEW, sp.preview)
 
 
-def _write_2d_product(parent, name: str, arr) -> None:
+def _write_2d_product(parent, name: str, arr, units: Optional[str] = None) -> None:
     grp = H.make_group(parent, name, S.NX_DATA, {S.ATTR_SIGNAL: S.DS_DATA})
-    H.write_array_dataset(grp, S.DS_DATA, np.asarray(arr))
+    H.write_array_dataset(grp, S.DS_DATA, np.asarray(arr),
+                          attrs={S.ATTR_UNITS: units} if units else None)
 
 
-def _write_measurement(parent, m: MeasurementPayload, det_label: str) -> None:
+def _write_measurement(parent, m: MeasurementPayload, det_label: str,
+                       frame_units: Optional[str] = None) -> None:
     # A measurement is one detector's decoded frame in this set. Detector
     # hardware specs live once in the session catalog (under this measurement's
     # detector set); here we reference them by numeric detector_id (the set's
@@ -483,7 +498,8 @@ def _write_measurement(parent, m: MeasurementPayload, det_label: str) -> None:
     grp = H.make_group(parent, S.format_detector_id(m.detector_id, det_label),
                        S.NX_DETECTOR, attrs)
     if m.data is not None:
-        H.write_array_dataset(grp, S.DS_DATA, np.asarray(m.data))
+        H.write_array_dataset(grp, S.DS_DATA, np.asarray(m.data),
+                              attrs={S.ATTR_UNITS: frame_units} if frame_units else None)
     if m.mask is not None:
         H.write_array_dataset(grp, S.DS_MASK, np.asarray(m.mask))
     if m.detector_meta is not None:
