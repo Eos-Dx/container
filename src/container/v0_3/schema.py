@@ -21,6 +21,7 @@ from container.common.constants import (  # noqa: F401  (re-exported for writers
     ATTR_SCHEMA_VERSION,
     ATTR_SIGNAL,
     ATTR_UNITS,
+    CONTAINER_TYPE_COMBINED,
     CONTAINER_TYPE_SESSION,
     NX_COLLECTION,
     NX_DATA,

@@ -15,7 +15,9 @@ from . import schema
 from . import utils
 from . import validator
 from . import manifest
+from . import combine
 from . import writer
+from .combine import build_combined_container
 from .manifest import MANIFEST_VERSION, build_manifest, write_zip
 from .reader import SessionContainer, TechnicalContainer
 from .writer import (
@@ -37,12 +39,14 @@ __all__ = [
     "validator",
     "writer",
     "manifest",
+    "combine",
     "MANIFEST_VERSION",
     "build_manifest",
     "write_zip",
     "SessionContainer",
     "TechnicalContainer",
     "build_session_container",
+    "build_combined_container",
     "SessionPayload",
     "SetPayload",
     "MeasurementPayload",
