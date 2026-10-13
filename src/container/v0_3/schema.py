@@ -116,6 +116,11 @@ ATTR_PATIENT_CLINICAL_NAME = "patient_clinical_name"
 ATTR_SAMPLE_TYPE_NAME = "sample_type_name"
 
 DS_PROTOCOL_SNAPSHOT = "protocol_snapshot"
+# producer-declared per-session metadata (e.g. suspicious-lesion position) as a
+# JSON values dict, plus the field definitions it was collected against — so a
+# reader can label values even after the producer's form has changed.
+DS_SESSION_METADATA = "metadata"
+DS_SESSION_METADATA_SCHEMA = "metadata_schema"
 
 # ================== Dependency-edge attributes ============
 ATTR_ROLE = "role"

@@ -90,6 +90,22 @@ class SessionContainer:
                 out.update(blob)
             return out or None
 
+    def session_metadata(self) -> Optional[Dict[str, Any]]:
+        """Producer-declared per-session values (key → value), or None."""
+        with h5py.File(self.file_path, "r") as f:
+            session = f.get(S.GROUP_SESSION)
+            if session is None:
+                return None
+            return read_json_dataset(session, S.DS_SESSION_METADATA, default=None)
+
+    def session_metadata_schema(self) -> Optional[List[Dict[str, Any]]]:
+        """Field definitions the session metadata was collected against, or None."""
+        with h5py.File(self.file_path, "r") as f:
+            session = f.get(S.GROUP_SESSION)
+            if session is None:
+                return None
+            return read_json_dataset(session, S.DS_SESSION_METADATA_SCHEMA, default=None)
+
     def dependencies(self) -> List[Dict[str, Any]]:
         with h5py.File(self.file_path, "r") as f:
             session = f.get(S.GROUP_SESSION)

@@ -150,6 +150,30 @@ def test_sample_metadata_optional_and_roundtrips(tmp_path):
     assert c2.session_meta()["name"] == "PAT001-S01"
 
 
+def test_session_metadata_optional_and_roundtrips(tmp_path):
+    # absent by default — no datasets under /session, accessors return None
+    _, _, path = build(tmp_path)
+    c = open_container(path)
+    assert c.session_metadata() is None
+    assert c.session_metadata_schema() is None
+    with h5py.File(path, "r") as f:
+        assert "metadata" not in f["/session"]
+        assert "metadata_schema" not in f["/session"]
+
+    # populated — values and the field definitions they were collected against
+    # round-trip, and stay out of the flat identity view
+    values = {"suspicious": True, "clock_position": "3:00", "nipple_distance_cm": 4}
+    schema = [{"key": "suspicious", "label": "Suspicious lesion", "type": "boolean"},
+              {"key": "clock_position", "label": "Clock position", "type": "select",
+               "options": ["12:00", "3:00"]}]
+    _, _, path2 = build(tmp_path, session_metadata=values, session_metadata_schema=schema)
+    c2 = open_container(path2)
+    assert c2.session_metadata() == values
+    assert c2.session_metadata_schema() == schema
+    assert "metadata" not in c2.session_meta()
+    assert c2.validate()[0]
+
+
 def test_metadata_attrs_explicit_split(tmp_path):
     # producer declares which keys become attrs; the rest stays a JSON blob
     s = make_set(metadata_attrs={"position": "P2", "transmission_pct": 10.0},
