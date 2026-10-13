@@ -129,6 +129,8 @@ def build_manifest(payload: SessionPayload, mask_refs: Optional[dict] = None) ->
             },
             "sample": sample,
             "protocol_snapshot": payload.protocol_snapshot,
+            "metadata": payload.session_metadata or None,
+            "metadata_schema": payload.session_metadata_schema or None,
             "dependencies": [
                 {"kind": d.role, "uid": d.session_uid, "session_pk": d.session_pk}
                 for d in payload.dependencies

@@ -203,6 +203,10 @@ class SessionPayload:
     sample_metadata: Optional[dict] = None   # free-form descriptive (e.g. clinical) JSON blob
     sample_metadata_attrs: dict = dataclasses.field(default_factory=dict)  # → NXsample attrs
     protocol_snapshot: Optional[dict] = None
+    # per-session descriptive values (key → value) and the field definitions
+    # they were collected against; both JSON, both optional
+    session_metadata: Optional[dict] = None
+    session_metadata_schema: Optional[list] = None
     dependencies: List[DependencyRef] = dataclasses.field(default_factory=list)
     # provenance only — which deployment produced this file; NOT used for ids
     instance_id: Optional[str] = None
@@ -332,6 +336,11 @@ def _write_session(f, payload: SessionPayload, session_uid: str) -> None:
 
     if payload.protocol_snapshot is not None:
         H.write_json_dataset(session, S.DS_PROTOCOL_SNAPSHOT, payload.protocol_snapshot)
+    if payload.session_metadata:
+        H.write_json_dataset(session, S.DS_SESSION_METADATA, payload.session_metadata)
+    if payload.session_metadata_schema:
+        H.write_json_dataset(session, S.DS_SESSION_METADATA_SCHEMA,
+                             payload.session_metadata_schema)
 
     # dependency edges as a single JSON dataset (no attr-only groups). The edge
     # references the target by its persisted session_uid (producer-supplied).
