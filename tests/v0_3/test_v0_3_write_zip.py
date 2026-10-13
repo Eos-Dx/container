@@ -117,6 +117,22 @@ def test_metadata_attrs_merge_and_numpy_scalars_serialize(tmp_path):
     assert m["session"]["sample"]["metadata"] == {"age": 40, "side": "Left"}
 
 
+def test_session_metadata_rides_on_session_not_sample(tmp_path):
+    # absent → explicit nulls, so the cloud can tell "none" from an old producer
+    _, _, m = build(tmp_path)
+    assert m["session"]["metadata"] is None
+    assert m["session"]["metadata_schema"] is None
+
+    values = {"suspicious": True, "nipple_distance_cm": np.int64(4)}
+    schema = [{"key": "suspicious", "label": "Suspicious lesion", "type": "boolean"}]
+    p = make_session(session_metadata=values, session_metadata_schema=schema)
+    _, _, m = build(tmp_path, p)
+    assert m["session"]["metadata"] == {"suspicious": True, "nipple_distance_cm": 4}
+    assert m["session"]["metadata_schema"] == schema
+    # sample metadata is per-sample identity; session values must not leak into it
+    assert not (m["session"]["sample"] or {}).get("metadata")
+
+
 def test_frame_source_may_return_a_path(tmp_path):
     f = tmp_path / "frame.gfrm"
     f.write_bytes(b"from disk")
