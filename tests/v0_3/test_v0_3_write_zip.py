@@ -124,7 +124,7 @@ def test_session_metadata_rides_on_session_not_sample(tmp_path):
     assert m["session"]["metadata_schema"] is None
 
     values = {"suspicious": True, "nipple_distance_cm": np.int64(4)}
-    schema = [{"key": "suspicious", "label": "Suspicious lesion", "type": "boolean"}]
+    schema = {"session": [{"key": "suspicious", "label": "Suspicious lesion", "type": "boolean"}]}
     p = make_session(session_metadata=values, session_metadata_schema=schema)
     _, _, m = build(tmp_path, p)
     assert m["session"]["metadata"] == {"suspicious": True, "nipple_distance_cm": 4}

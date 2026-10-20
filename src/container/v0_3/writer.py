@@ -203,10 +203,10 @@ class SessionPayload:
     sample_metadata: Optional[dict] = None   # free-form descriptive (e.g. clinical) JSON blob
     sample_metadata_attrs: dict = dataclasses.field(default_factory=dict)  # → NXsample attrs
     protocol_snapshot: Optional[dict] = None
-    # per-session descriptive values (key → value) and the field definitions
-    # they were collected against; both JSON, both optional
+    # per-session descriptive values (key → value) and the forms they were
+    # collected against ({"session": [...], "sets": {...}}); both JSON, both optional
     session_metadata: Optional[dict] = None
-    session_metadata_schema: Optional[list] = None
+    session_metadata_schema: Optional[dict] = None
     dependencies: List[DependencyRef] = dataclasses.field(default_factory=list)
     # provenance only — which deployment produced this file; NOT used for ids
     instance_id: Optional[str] = None
