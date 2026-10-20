@@ -98,8 +98,9 @@ class SessionContainer:
                 return None
             return read_json_dataset(session, S.DS_SESSION_METADATA, default=None)
 
-    def session_metadata_schema(self) -> Optional[List[Dict[str, Any]]]:
-        """Field definitions the session metadata was collected against, or None."""
+    def session_metadata_schema(self) -> Optional[Dict[str, Any]]:
+        """Forms the session metadata (and its sets' form values) were
+        collected against — ``{"session": [...], "sets": {...}}`` — or None."""
         with h5py.File(self.file_path, "r") as f:
             session = f.get(S.GROUP_SESSION)
             if session is None:
