@@ -34,7 +34,7 @@ The library is the single writer of the session upload zip and the single
 upload client, shared by every producer (EoScan, `container_prep`):
 
 - `container.v0_3.write_zip(payload, frame_source, out_path, *, header_source=None, mask_source=None)`
-  — `manifest.json` (manifest v1, `container.v0_3.MANIFEST_VERSION`) plus the
+  — `manifest.json` (manifest v2, `container.v0_3.MANIFEST_VERSION`) plus the
   original frame bytes, headers and masks. `frame_source(measurement_uid)`
   returns bytes or a path; producers resolve frames from their own layouts.
 - `container.upload_zip(zip_path, session_uid, *, url, token)` — sha256 →

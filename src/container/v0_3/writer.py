@@ -203,7 +203,8 @@ class SessionPayload:
     sample_metadata: Optional[dict] = None   # free-form descriptive (e.g. clinical) JSON blob
     sample_metadata_attrs: dict = dataclasses.field(default_factory=dict)  # → NXsample attrs
     protocol_snapshot: Optional[dict] = None
-    # per-session descriptive values (key → value) and the forms they were
+    # per-session descriptive values as namespaces, one per writer ({"form":
+    # {key → value}, ...}, like a set's metadata), and the forms they were
     # collected against ({"session": [...], "sets": {...}}); both JSON, both optional
     session_metadata: Optional[dict] = None
     session_metadata_schema: Optional[dict] = None
