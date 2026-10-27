@@ -1,4 +1,4 @@
-"""write_zip emits the EosCloud upload contract (manifest v1) from a SessionPayload."""
+"""write_zip emits the EosCloud upload contract (manifest v2) from a SessionPayload."""
 
 import hashlib
 import json
@@ -7,20 +7,13 @@ import zipfile
 import numpy as np
 import pytest
 
-from container.v0_3 import MANIFEST_VERSION, build_manifest, write_zip
+from container.v0_3 import MANIFEST_VERSION, build_manifest, manifest, write_zip
 
 from _factory_v0_3 import make_detector_set_spec, make_detector_spec, make_measurement, make_session, make_set
 
 FRAMES = {"meas-uid-7": b"gfrm bytes 7", "meas-uid-8": b"gfrm bytes 8"}
 HEADERS = {"meas-uid-7": b"dsc 7", "meas-uid-8": b"dsc 8"}
 
-# what the cloud's ingest requires (apps/jobs/handlers/ingest.py) — kept in step by hand
-REQUIRED_SESSION = ("uid", "category", "status", "started_at", "machine")
-REQUIRED_SET = (
-    "set_uid", "detector_set_id", "status", "measurement_type_name", "measurement_type_category",
-    "distance_mm", "voltage_kv", "current_ua", "exposure_time_s", "created_at", "measurements",
-)
-REQUIRED_MEASUREMENT = ("measurement_uid", "detector_id", "file")
 NOT_SHIPPED = ("raw", "processed", "integration", "processing_config", "processing_steps", "preview")
 
 
@@ -48,9 +41,9 @@ def test_layout_and_bytes(tmp_path):
 def test_manifest_has_what_ingest_requires_and_nothing_derived(tmp_path):
     p, _, m = build(tmp_path)
     assert set(m) == {"manifest_version", "producer", "session", "detector_sets", "sets"}
-    assert m["manifest_version"] == MANIFEST_VERSION == 1
+    assert m["manifest_version"] == MANIFEST_VERSION == 2
     assert m["producer"] == {"software": "eoscan", "version": "1.0", "instance_id": "inst-1"}
-    assert all(k in m["session"] for k in REQUIRED_SESSION)
+    manifest.check(m)  # every key a reader requires
     assert m["session"]["machine"]["wavelength_angstrom"] == 1.5406
     assert m["session"]["sample"] == {"clinical_name": "PAT001-S01", "patient_clinical_name": "PAT001",
                                       "sample_type_name": "tissue", "metadata": None}
@@ -58,12 +51,10 @@ def test_manifest_has_what_ingest_requires_and_nothing_derived(tmp_path):
     det = m["detector_sets"][0]["detectors"][0]
     assert det["hardware_id"] == "Det-A" and det["mask_ref"] is None and "mask_file_path" not in det
     s = m["sets"][0]
-    assert all(k in s for k in REQUIRED_SET)
     assert not any(k in s for k in NOT_SHIPPED)
     assert s["poni_text"] == "Distance: 0.17\n" and s["raw_sha256"] is None
     assert s["metadata"] == {"lrf": {"average_mm": 1.2}, "advacam": {"frame_count": 3}}
     assert s["qc_results"][0]["check_name"] == "symmetry" and s["qc_results"][0]["priority"] == 10
-    assert all(k in s["measurements"][0] for k in REQUIRED_MEASUREMENT)
 
 
 def test_calibration_has_no_sample_block(tmp_path):
@@ -123,14 +114,21 @@ def test_session_metadata_rides_on_session_not_sample(tmp_path):
     assert m["session"]["metadata"] is None
     assert m["session"]["metadata_schema"] is None
 
-    values = {"suspicious": True, "nipple_distance_cm": np.int64(4)}
+    values = {"form": {"suspicious": True, "nipple_distance_cm": np.int64(4)}}
     schema = {"session": [{"key": "suspicious", "label": "Suspicious lesion", "type": "boolean"}]}
     p = make_session(session_metadata=values, session_metadata_schema=schema)
     _, _, m = build(tmp_path, p)
-    assert m["session"]["metadata"] == {"suspicious": True, "nipple_distance_cm": 4}
+    assert m["session"]["metadata"] == {"form": {"suspicious": True, "nipple_distance_cm": 4}}
     assert m["session"]["metadata_schema"] == schema
     # sample metadata is per-sample identity; session values must not leak into it
     assert not (m["session"]["sample"] or {}).get("metadata")
+
+
+def test_flat_session_metadata_is_refused(tmp_path):
+    # v1's shape (form values at the top level) must not ship under v2
+    p = make_session(session_metadata={"suspicious": True})
+    with pytest.raises(ValueError, match="namespace"):
+        build(tmp_path, p)
 
 
 def test_frame_source_may_return_a_path(tmp_path):

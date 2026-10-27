@@ -18,7 +18,7 @@ from . import manifest
 from . import combine
 from . import writer
 from .combine import build_combined_container
-from .manifest import MANIFEST_VERSION, build_manifest, write_zip
+from .manifest import KNOWN_VERSIONS, MANIFEST_VERSION, ManifestError, build_manifest, write_zip
 from .reader import SessionContainer, TechnicalContainer
 from .writer import (
     DependencyRef,
@@ -41,6 +41,8 @@ __all__ = [
     "manifest",
     "combine",
     "MANIFEST_VERSION",
+    "KNOWN_VERSIONS",
+    "ManifestError",
     "build_manifest",
     "write_zip",
     "SessionContainer",

@@ -16,7 +16,7 @@ Usage:
     container = SessionContainer.open('path/to/file.h5')
 """
 
-__version__ = "0.4.3"
+__version__ = "0.5.0"
 
 from .loader import open_container, open_container_bundle
 from .upload import AlreadyUploaded, UploadError, upload_zip

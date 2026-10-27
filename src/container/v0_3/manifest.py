@@ -1,4 +1,4 @@
-"""The EosCloud upload contract — ``manifest.json`` + zip layout (manifest v1).
+"""The EosCloud upload contract — ``manifest.json`` + zip layout (manifest v2).
 
 One zip per session::
 
@@ -16,10 +16,23 @@ products (``raw``, ``processed``, ``integration``, ``processing_config``,
 Additive fields do not bump ``MANIFEST_VERSION``; removing one or changing its
 meaning does. The cloud rejects versions it does not know.
 
+``session.metadata`` is a dict of namespaces, one per writer, the same shape as
+a set's ``metadata``: the producer's session form values sit under ``form``.
+v1 carried those form values flat at the top level; that change of meaning is
+what v2 is. ``build_manifest`` refuses a flat dict, so a v2 manifest cannot
+carry the v1 shape.
+
 ``write_zip`` is the only writer of this contract, shared by every producer
 (EoScan, container_prep). It reads no settings and takes no ORM object: frame
 bytes come from ``frame_source(measurement_uid)``, because producers resolve
 them from different layouts.
+
+The reading side lives here too, so the contract and its history are in one
+place: ``check`` (required keys, known version), ``upgrade`` (an older
+version's shape to the current one — archives are never rewritten, so a
+reader upgrades what it reads) and ``members`` (every file a manifest names).
+What a particular upload must also satisfy — its zip, its instance, its bytes
+— is the reader's business.
 """
 
 import dataclasses
@@ -28,13 +41,15 @@ import json
 import posixpath
 import zipfile
 from pathlib import Path
-from typing import Any, Callable, Optional, Union
+from typing import Any, Callable, List, Optional, Tuple, Union
 
 import numpy as np
 
 from .writer import SessionPayload, SetPayload
 
-MANIFEST_VERSION = 1
+MANIFEST_VERSION = 2
+# every version a reader can upgrade from
+KNOWN_VERSIONS = frozenset({1, 2})
 
 # bytes, or a path to read them from
 Source = Union[bytes, bytearray, memoryview, str, Path]
@@ -77,7 +92,7 @@ def write_zip(
         manifest = build_manifest(payload, mask_refs)
         for sp, ms in zip(payload.sets, manifest["sets"]):
             for mp, mm in zip(sp.measurements, ms["measurements"]):
-                base = f"{uid}/sets/{sp.set_uid}/measurements/{mp.measurement_uid}/"
+                base = f"{uid}/" + _measurement_dir(sp.set_uid, mp.measurement_uid)
                 image = _read(frame_source(mp.measurement_uid))
                 mm["sha256"] = hashlib.sha256(image).hexdigest()
                 zf.writestr(base + mm["file"], image)
@@ -95,6 +110,7 @@ def build_manifest(payload: SessionPayload, mask_refs: Optional[dict] = None) ->
     """The manifest dict for ``payload`` — everything except the per-member
     ``sha256`` values, which ``write_zip`` fills as it reads the bytes."""
     mask_refs = mask_refs or {}
+    _check_namespaces(payload.session_metadata, "session_metadata")
     sample = None
     if payload.sample_clinical_name is not None:
         metadata = {**(payload.sample_metadata or {}), **payload.sample_metadata_attrs}
@@ -195,6 +211,88 @@ def _set_entry(sp: SetPayload, mask_refs: dict) -> dict:
         ],
         "qc_results": [dataclasses.asdict(q) for q in sp.qc_results],
     }
+
+
+class ManifestError(ValueError):
+    """A manifest that breaks the contract of the version it declares."""
+
+
+_SESSION_KEYS = ("uid", "category", "status", "started_at", "machine")
+_SET_KEYS = (
+    "set_uid", "detector_set_id", "status", "measurement_type_name", "measurement_type_category",
+    "distance_mm", "voltage_kv", "current_ua", "exposure_time_s", "created_at", "measurements",
+)
+_MEASUREMENT_KEYS = ("measurement_uid", "detector_id", "file")
+
+
+def check(manifest: dict) -> None:
+    """Raise ``ManifestError`` unless ``manifest`` declares a known version and
+    has every key the contract requires. Required keys only — every other
+    field is optional, and a reader ``.get()``s it, so absence is accepted."""
+    _require(manifest, ("manifest_version", "producer", "session", "detector_sets", "sets"), "manifest")
+    if manifest["manifest_version"] not in KNOWN_VERSIONS:
+        raise ManifestError(f"unknown manifest_version {manifest['manifest_version']!r}")
+    _require(manifest["session"], _SESSION_KEYS, "session")
+    if "wavelength_angstrom" not in manifest["session"]["machine"]:
+        raise ManifestError("manifest session.machine lacks wavelength_angstrom")
+    if manifest["session"]["category"] == "SAMPLE":
+        sample = manifest["session"].get("sample")
+        if not sample or not sample.get("clinical_name"):
+            raise ManifestError("SAMPLE session without sample.clinical_name")
+    for sp in manifest["sets"]:
+        _require(sp, _SET_KEYS, f"set {sp.get('set_uid')}")
+        for m in sp["measurements"]:
+            _require(m, _MEASUREMENT_KEYS, f"measurement {m.get('measurement_uid')}")
+
+
+def upgrade(manifest: dict) -> dict:
+    """Bring a ``check``ed manifest to the current version's shape, in place,
+    and return it. ``manifest_version`` is left as it arrived: it records what
+    was sent, not what the dict now holds.
+
+    v1 → v2: v1 carried the session form's values flat in ``session.metadata``;
+    v2 holds namespaces, the form's under ``form``."""
+    session = manifest["session"]
+    if manifest["manifest_version"] == 1 and session.get("metadata"):
+        session["metadata"] = {"form": session["metadata"]}
+    _check_namespaces(session.get("metadata"), "manifest session.metadata")
+    return manifest
+
+
+def members(manifest: dict) -> List[Tuple[str, Optional[str]]]:
+    """Every file ``manifest`` names, as ``(path under the session root,
+    sha256 or None)`` — measurement images and headers, then masks.
+    ``manifest.json`` itself is not listed."""
+    out = []
+    for sp in manifest["sets"]:
+        for m in sp["measurements"]:
+            base = _measurement_dir(sp["set_uid"], m["measurement_uid"])
+            out.append((base + m["file"], m.get("sha256")))
+            if m.get("header"):
+                out.append((base + m["header"], None))
+    masks = {m["mask_ref"] for sp in manifest["sets"] for m in sp["measurements"] if m.get("mask_ref")}
+    out.extend((rel, None) for rel in sorted(masks))
+    return out
+
+
+def _require(d, keys, where):
+    if not isinstance(d, dict):
+        raise ManifestError(f"manifest {where} is not an object")
+    missing = [k for k in keys if k not in d]
+    if missing:
+        raise ManifestError(f"manifest {where} lacks {missing}")
+
+
+def _check_namespaces(metadata: Optional[dict], where: str) -> None:
+    for key, value in (metadata or {}).items():
+        if not isinstance(value, dict):
+            raise ManifestError(
+                f"{where}[{key!r}] is not a namespace (got {type(value).__name__}); "
+                f"form values go under ['form']")
+
+
+def _measurement_dir(set_uid: str, measurement_uid: str) -> str:
+    return f"sets/{set_uid}/measurements/{measurement_uid}/"
 
 
 def _ext(path: str) -> str:

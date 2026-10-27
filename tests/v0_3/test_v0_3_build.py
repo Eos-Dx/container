@@ -162,7 +162,7 @@ def test_session_metadata_optional_and_roundtrips(tmp_path):
 
     # populated — values and the field definitions they were collected against
     # round-trip, and stay out of the flat identity view
-    values = {"suspicious": True, "clock_position": "3:00", "nipple_distance_cm": 4}
+    values = {"form": {"suspicious": True, "clock_position": "3:00", "nipple_distance_cm": 4}}
     schema = {"session": [{"key": "suspicious", "label": "Suspicious lesion", "type": "boolean"},
                           {"key": "clock_position", "label": "Clock position", "type": "select",
                            "options": ["12:00", "3:00"]}]}
