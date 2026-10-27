@@ -97,6 +97,42 @@ def test_members_are_exactly_the_files_written(tmp_path):
 
 
 
+def test_v1_sample_values_move_to_the_session(tmp_path):
+    _, _, m = written(tmp_path)
+    v1 = as_v1(m)
+    v1["session"]["sample"]["metadata"] = {
+        "date_of_birth": None, "sex": None, "race_ethnicity": "",
+        "specimen_status": "BENIGN", "collected_at": "2025-04-09",
+        "age": 51, "side": "Left", "biopsy": False}
+    manifest.upgrade(v1)
+    sample = v1["session"]["sample"]
+    assert "metadata" not in sample
+    # patient facts typed; an empty legacy string is no fact
+    assert (sample["patient_date_of_birth"], sample["patient_sex"],
+            sample["patient_race_ethnicity"]) == (None, None, None)
+    assert v1["session"]["sample_status"] == "BENIGN"
+    # the rest is the session's, beside the form; collected_at is gone
+    assert v1["session"]["metadata"] == {
+        "form": {"suspicious": True}, "curation": {"age": 51, "side": "Left", "biopsy": False}}
+
+
+def test_v1_patient_facts_become_typed(tmp_path):
+    _, _, m = written(tmp_path)
+    v1 = as_v1(m)
+    v1["session"]["sample"]["metadata"] = {"race_ethnicity": "Asian", "sex": "FEMALE"}
+    manifest.upgrade(v1)
+    assert v1["session"]["sample"]["patient_race_ethnicity"] == "Asian"
+    assert v1["session"]["sample"]["patient_sex"] == "FEMALE"
+    assert "curation" not in v1["session"]["metadata"]
+
+
+def test_v2_sample_metadata_refused(tmp_path):
+    _, _, m = written(tmp_path)
+    m["session"]["sample"]["metadata"] = {"age": 51}
+    with pytest.raises(ManifestError, match="identity only"):
+        manifest.upgrade(m)
+
+
 def test_eoscan_v1_sets_pass_unchanged(tmp_path):
     _, _, m = written(tmp_path)
     v1 = as_v1(m)

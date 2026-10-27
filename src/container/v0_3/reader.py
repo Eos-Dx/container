@@ -63,35 +63,14 @@ class SessionContainer:
                 session = f[S.GROUP_SESSION]
                 meta.update({k: _decode(v) for k, v in session.attrs.items()})
                 if "sample" in session:
-                    # structural identity = scalar datasets; descriptive metadata
-                    # lives in group attrs (+ a leftover JSON blob), surfaced via
-                    # sample_metadata() and kept out of this flat identity view.
-                    sample_fields = _scalar_datasets(session["sample"])
-                    sample_fields.pop(S.DS_SAMPLE_METADATA, None)
-                    meta.update(sample_fields)
+                    # sample + patient identity = scalar datasets
+                    meta.update(_scalar_datasets(session["sample"]))
                 if "instrument" in session:
                     meta.update(_read_fields(session["instrument"]))
             return meta
 
-    def sample_metadata(self) -> Optional[Dict[str, Any]]:
-        """Free-form descriptive (e.g. clinical) sample metadata, or None.
-
-        Reassembled from the flat scalar attrs on the sample group plus any
-        nested/None leftovers kept in the JSON blob."""
-        with h5py.File(self.file_path, "r") as f:
-            session = f.get(S.GROUP_SESSION)
-            if session is None or "sample" not in session:
-                return None
-            sample = session["sample"]
-            out = {k: _decode(v) for k, v in sample.attrs.items()
-                   if k != S.ATTR_NX_CLASS}
-            blob = read_json_dataset(sample, S.DS_SAMPLE_METADATA, default=None)
-            if blob:
-                out.update(blob)
-            return out or None
-
     def session_metadata(self) -> Optional[Dict[str, Any]]:
-        """Producer-declared per-session values (key → value), or None."""
+        """Per-session values as namespaces (``form``, ``curation``, ...), or None."""
         with h5py.File(self.file_path, "r") as f:
             session = f.get(S.GROUP_SESSION)
             if session is None:

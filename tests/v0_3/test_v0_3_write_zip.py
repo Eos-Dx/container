@@ -46,7 +46,9 @@ def test_manifest_has_what_ingest_requires_and_nothing_derived(tmp_path):
     manifest.check(m)  # every key a reader requires
     assert m["session"]["machine"]["wavelength_angstrom"] == 1.5406
     assert m["session"]["sample"] == {"clinical_name": "PAT001-S01", "patient_clinical_name": "PAT001",
-                                      "sample_type_name": "tissue", "metadata": None}
+                                      "sample_type_name": "tissue", "patient_date_of_birth": None,
+                                      "patient_sex": None, "patient_race_ethnicity": None}
+    assert m["session"]["sample_status"] is None
     assert m["session"]["dependencies"][0] == {"kind": "calibration", "uid": "sess-uid-7", "session_pk": 7}
     det = m["detector_sets"][0]["detectors"][0]
     assert det["hardware_id"] == "Det-A" and det["mask_ref"] is None and "mask_file_path" not in det
@@ -97,15 +99,15 @@ def test_masks_not_shipped_without_source(tmp_path):
     assert m["detector_sets"][0]["detectors"][0]["mask_ref"] is None
 
 
-def test_sample_attrs_merge_and_numpy_scalars_serialize(tmp_path):
+def test_numpy_scalars_serialize(tmp_path):
     raw = np.arange(6, dtype=np.uint16).reshape(2, 3)
     s = make_set(raw=raw, metadata={"lrf": {"average_mm": np.float64(1.5)}}, distance_mm=np.float64(170.5))
-    p = make_session(sets=[s], sample_metadata={"age": np.int64(40)}, sample_metadata_attrs={"side": "Left"})
+    p = make_session(sets=[s], session_metadata={"curation": {"age": np.int64(40)}})
     _, _, m = build(tmp_path, p)
     assert m["sets"][0]["metadata"] == {"lrf": {"average_mm": 1.5}}
     assert m["sets"][0]["distance_mm"] == 170.5
     assert m["sets"][0]["raw_sha256"] == hashlib.sha256(raw.tobytes()).hexdigest()
-    assert m["session"]["sample"]["metadata"] == {"age": 40, "side": "Left"}
+    assert m["session"]["metadata"] == {"curation": {"age": 40}}
 
 
 def test_session_metadata_rides_on_session_not_sample(tmp_path):
@@ -120,8 +122,8 @@ def test_session_metadata_rides_on_session_not_sample(tmp_path):
     _, _, m = build(tmp_path, p)
     assert m["session"]["metadata"] == {"form": {"suspicious": True, "nipple_distance_cm": 4}}
     assert m["session"]["metadata_schema"] == schema
-    # sample metadata is per-sample identity; session values must not leak into it
-    assert not (m["session"]["sample"] or {}).get("metadata")
+    # the sample block is identity; session values must not leak into it
+    assert "metadata" not in (m["session"]["sample"] or {})
 
 
 def test_flat_session_metadata_is_refused(tmp_path):

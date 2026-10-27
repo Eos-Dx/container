@@ -25,6 +25,12 @@ it is temporary); that change of meaning is what v2 is.
 ``build_manifest`` refuses a flat dict, so a v2 manifest cannot carry the v1
 shape.
 
+The sample block is identity only: sample and patient names, the sample type
+and the patient's facts as typed ``patient_*`` keys. What is true of the
+sample at the time of a session is the session's: ``session.sample_status``,
+and descriptive values under ``session.metadata``'s ``curation``. v1 carried
+both in ``sample.metadata``; ``upgrade`` moves them.
+
 ``write_zip`` is the only writer of this contract, shared by every producer
 (EoScan, container_prep). It reads no settings and takes no ORM object: frame
 bytes come from ``frame_source(measurement_uid)``, because producers resolve
@@ -119,12 +125,13 @@ def build_manifest(payload: SessionPayload, mask_refs: Optional[dict] = None) ->
         _check_namespaces(sp.metadata, f"set {sp.set_uid} metadata")
     sample = None
     if payload.sample_clinical_name is not None:
-        metadata = {**(payload.sample_metadata or {}), **payload.sample_metadata_attrs}
         sample = {
             "clinical_name": payload.sample_clinical_name,
             "patient_clinical_name": payload.patient_clinical_name,
             "sample_type_name": payload.sample_type_name,
-            "metadata": metadata or None,
+            "patient_date_of_birth": payload.patient_date_of_birth,
+            "patient_sex": payload.patient_sex,
+            "patient_race_ethnicity": payload.patient_race_ethnicity,
         }
     return {
         "manifest_version": MANIFEST_VERSION,
@@ -141,6 +148,7 @@ def build_manifest(payload: SessionPayload, mask_refs: Optional[dict] = None) ->
             "operator_username": payload.operator_username,
             "started_at": payload.started_at,
             "completed_at": payload.completed_at,
+            "sample_status": payload.sample_status,
             "machine": {
                 "serial": payload.machine_serial,
                 "type": payload.machine_type,
@@ -260,9 +268,12 @@ def upgrade(manifest: dict) -> dict:
     session = manifest["session"]
     if manifest["manifest_version"] == 1:
         session["metadata"] = upgrade_v1_session_metadata(session.get("metadata"))
+        _upgrade_v1_sample(session)
         producer = manifest["producer"].get("software")
         for sp in manifest["sets"]:
             sp["metadata"] = upgrade_v1_set_metadata(sp.get("metadata"), sp, producer)
+    if (session.get("sample") or {}).get("metadata"):
+        raise ManifestError("manifest session.sample carries metadata; a sample block is identity only")
     _check_namespaces(session.get("metadata"), "manifest session.metadata")
     for sp in manifest["sets"]:
         _check_namespaces(sp.get("metadata"), f"manifest set {sp['set_uid']} metadata")
@@ -273,6 +284,35 @@ def upgrade_v1_session_metadata(metadata: Optional[dict]) -> Optional[dict]:
     """v1 session metadata in v2's shape: the session form's values, flat in
     v1, go under ``form``."""
     return {"form": metadata} if metadata else metadata
+
+
+# v1 sample.metadata keys that are v2's typed patient facts
+_V1_PATIENT_KEYS = {
+    "date_of_birth": "patient_date_of_birth",
+    "sex": "patient_sex",
+    "race_ethnicity": "patient_race_ethnicity",
+}
+
+
+def _upgrade_v1_sample(session: dict) -> None:
+    """v1 carried the sample's clinical values in ``sample.metadata`` (the
+    legacy backfill and container_prep's re-emits of EoScan sessions; EoScan
+    itself sent none). In v2 the patient's facts are the sample block's typed
+    ``patient_*`` keys, ``specimen_status`` is ``session.sample_status``,
+    ``collected_at`` is gone, and the rest — values as of this session — is
+    the session's ``curation``."""
+    sample = session.get("sample")
+    if not sample:
+        return
+    values = dict(sample.pop("metadata", None) or {})
+    for old, new in _V1_PATIENT_KEYS.items():
+        sample[new] = values.pop(old, None) or None
+    status = values.pop("specimen_status", None)
+    if status is not None:
+        session["sample_status"] = status
+    values.pop("collected_at", None)
+    if values:
+        session["metadata"] = {**(session.get("metadata") or {}), "curation": values}
 
 
 def upgrade_v1_set_metadata(metadata: Optional[dict], set_entry: dict,

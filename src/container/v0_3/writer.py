@@ -199,8 +199,14 @@ class SessionPayload:
     sample_clinical_name: Optional[str] = None
     patient_clinical_name: Optional[str] = None
     sample_type_name: Optional[str] = None
-    sample_metadata: Optional[dict] = None   # free-form descriptive (e.g. clinical) JSON blob
-    sample_metadata_attrs: dict = dataclasses.field(default_factory=dict)  # → NXsample attrs
+    # patient identity facts, typed beside patient_clinical_name (ISO date;
+    # free-text vocabularies). What changes over time is session metadata.
+    patient_date_of_birth: Optional[str] = None
+    patient_sex: Optional[str] = None
+    patient_race_ethnicity: Optional[str] = None
+    # the sample's state as of this session (e.g. NORMAL, CANCER) — a typed
+    # session field, filtered on, not metadata
+    sample_status: Optional[str] = None
     protocol_snapshot: Optional[dict] = None
     # per-session descriptive values as namespaces, one per writer ({"form":
     # {key → value}, ...}, like a set's metadata), and the forms they were
@@ -214,22 +220,6 @@ class SessionPayload:
     producer_version: str = "unknown"
     sets: List[SetPayload] = dataclasses.field(default_factory=list)
 
-
-# NXsample owns these (nx_class attr + the structural field datasets) — a
-# sample_metadata_attrs key may not shadow them.
-_SAMPLE_RESERVED = frozenset({
-    S.ATTR_NX_CLASS, S.FIELD_SAMPLE_NAME, S.FIELD_PATIENT_NAME,
-    S.FIELD_SAMPLE_TYPE, S.DS_SAMPLE_METADATA,
-})
-
-
-def _write_attrs_checked(group, attrs: dict, reserved: frozenset, where: str) -> None:
-    """Write producer-declared metadata attrs, raising if any key collides with a
-    reserved identity name. ``None`` values are skipped (attrs can't hold null)."""
-    collisions = reserved & attrs.keys()
-    if collisions:
-        raise ValueError(f"{where}: keys collide with reserved names {sorted(collisions)}")
-    H.set_attrs(group, attrs)
 
 
 # ====================== Builder ======================
@@ -288,25 +278,25 @@ def _write_session(f, payload: SessionPayload, session_uid: str) -> None:
         S.ATTR_OPERATOR_USERNAME: payload.operator_username,
         S.ATTR_STARTED_AT: payload.started_at,
         S.ATTR_COMPLETED_AT: payload.completed_at,
+        S.ATTR_SAMPLE_STATUS: payload.sample_status,
     })
 
-    # NXsample — names as string-field datasets. Omitted entirely when the
-    # session has no sample (e.g. CALIBRATION/SYSTEM) rather than left empty.
-    if any((payload.sample_clinical_name, payload.patient_clinical_name,
-            payload.sample_type_name, payload.sample_metadata,
-            payload.sample_metadata_attrs)):
+    # NXsample — sample and patient identity as string-field datasets. Omitted
+    # entirely when the session has no sample (e.g. CALIBRATION/SYSTEM) rather
+    # than left empty. Descriptive values are session metadata, not here.
+    sample_fields = (
+        (S.FIELD_SAMPLE_NAME, payload.sample_clinical_name),
+        (S.FIELD_PATIENT_NAME, payload.patient_clinical_name),
+        (S.FIELD_SAMPLE_TYPE, payload.sample_type_name),
+        (S.FIELD_PATIENT_DATE_OF_BIRTH, payload.patient_date_of_birth),
+        (S.FIELD_PATIENT_SEX, payload.patient_sex),
+        (S.FIELD_PATIENT_RACE_ETHNICITY, payload.patient_race_ethnicity),
+    )
+    if any(value is not None for _, value in sample_fields):
         sample = H.make_group(session, "sample", S.NX_SAMPLE)
-        if payload.sample_clinical_name is not None:
-            H.write_scalar_dataset(sample, S.FIELD_SAMPLE_NAME, payload.sample_clinical_name)
-        if payload.patient_clinical_name is not None:
-            H.write_scalar_dataset(sample, S.FIELD_PATIENT_NAME, payload.patient_clinical_name)
-        if payload.sample_type_name is not None:
-            H.write_scalar_dataset(sample, S.FIELD_SAMPLE_TYPE, payload.sample_type_name)
-        if payload.sample_metadata_attrs:
-            _write_attrs_checked(sample, payload.sample_metadata_attrs,
-                                 _SAMPLE_RESERVED, "sample_metadata_attrs")
-        if payload.sample_metadata:
-            H.write_json_dataset(sample, S.DS_SAMPLE_METADATA, payload.sample_metadata)
+        for name, value in sample_fields:
+            if value is not None:
+                H.write_scalar_dataset(sample, name, value)
 
     # NXinstrument — machine identity as attrs; physics as datasets-with-units.
     instrument = H.make_group(session, "instrument", S.NX_INSTRUMENT, {
