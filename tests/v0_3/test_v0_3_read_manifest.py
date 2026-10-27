@@ -94,3 +94,20 @@ def test_members_are_exactly_the_files_written(tmp_path):
     # images carry the sha256 the writer recorded; headers and masks carry none
     for rel, sha in listed:
         assert (sha is not None) == rel.split("/")[-1].startswith("image")
+
+
+
+def test_eoscan_v1_sets_pass_unchanged(tmp_path):
+    _, _, m = written(tmp_path)
+    v1 = as_v1(m)
+    v1["sets"][0]["metadata"] = {"lrf": {"average_mm": 1.2}, "operator": {"comment": "x"}}
+    manifest.upgrade(v1)
+    assert v1["sets"][0]["metadata"] == {"lrf": {"average_mm": 1.2}, "operator": {"comment": "x"}}
+
+
+def test_flat_set_metadata_from_another_producer_refused(tmp_path):
+    _, _, m = written(tmp_path)
+    v1 = as_v1(m)
+    v1["sets"][0]["metadata"] = {"position": "P1"}
+    with pytest.raises(ManifestError, match=r"metadata\['position'\] is not a namespace"):
+        manifest.upgrade(v1)

@@ -174,34 +174,24 @@ def test_session_metadata_optional_and_roundtrips(tmp_path):
     assert c2.validate()[0]
 
 
-def test_metadata_attrs_explicit_split(tmp_path):
-    # producer declares which keys become attrs; the rest stays a JSON blob
-    s = make_set(metadata_attrs={"position": "P2", "transmission_pct": 10.0},
-                 metadata={"backfill_provenance": {"era": "v1"}})
+def test_set_metadata_is_one_json_dataset(tmp_path):
+    # namespaces and all, in the set's metadata dataset — none become attrs
+    s = make_set(metadata={"omniscan": {"position": "P2", "transmission_pct": 10.0,
+                                        "provenance": {"era": "v1"}}})
     _, _, path = build_session_container(
         make_session(sets=[s], sample_metadata_attrs={"age": 66, "grade": "BENIGN"}),
         tmp_path)
     with h5py.File(path, "r") as f:
         sg = f["/session/sets/set_001_sample_main"]
-        assert sg.attrs["position"] == "P2"
-        assert sg.attrs["transmission_pct"] == 10.0
-        assert read_json_dataset(sg, "metadata")["backfill_provenance"]["era"] == "v1"
+        assert "position" not in sg.attrs
+        assert read_json_dataset(sg, "metadata")["omniscan"]["position"] == "P2"
         # promoted clinical lands on NXsample; no blob when fully promoted
         assert f["/session/sample"].attrs["age"] == 66
         assert "metadata" not in f["/session/sample"]
     c = open_container(path)
-    set0 = c.sets()[0]
-    assert set0["position"] == "P2"
-    assert set0["metadata"]["backfill_provenance"]["era"] == "v1"
+    assert c.sets()[0]["metadata"]["omniscan"]["provenance"]["era"] == "v1"
     assert c.sample_metadata() == {"age": 66, "grade": "BENIGN"}
     assert "age" not in c.session_meta()   # stays out of the flat identity view
-
-
-def test_metadata_attrs_reserved_collision_raises(tmp_path):
-    # an explicit attr key shadowing a set identity attr is a loud build error
-    s = make_set(metadata_attrs={"status": "SNEAKY"})
-    with pytest.raises(ValueError, match="reserved"):
-        build_session_container(make_session(sets=[s]), tmp_path)
 
 
 def test_physics_scalars_are_fields_with_units(tmp_path):

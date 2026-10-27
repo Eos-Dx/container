@@ -16,11 +16,14 @@ products (``raw``, ``processed``, ``integration``, ``processing_config``,
 Additive fields do not bump ``MANIFEST_VERSION``; removing one or changing its
 meaning does. The cloud rejects versions it does not know.
 
-``session.metadata`` is a dict of namespaces, one per writer, the same shape as
-a set's ``metadata``: the producer's session form values sit under ``form``.
-v1 carried those form values flat at the top level; that change of meaning is
-what v2 is. ``build_manifest`` refuses a flat dict, so a v2 manifest cannot
-carry the v1 shape.
+``session.metadata`` and every set's ``metadata`` are dicts of namespaces, one
+per writer: the producer's session form values sit under ``form``, a set's
+writers under theirs (``lrf``, ``operator``, ...). v1 carried session form
+values flat, and the legacy backfill's set values flat beside its
+``backfill_provenance`` (upgraded by ``legacy_omniscan``, kept apart because
+it is temporary); that change of meaning is what v2 is.
+``build_manifest`` refuses a flat dict, so a v2 manifest cannot carry the v1
+shape.
 
 ``write_zip`` is the only writer of this contract, shared by every producer
 (EoScan, container_prep). It reads no settings and takes no ORM object: frame
@@ -45,6 +48,7 @@ from typing import Any, Callable, List, Optional, Tuple, Union
 
 import numpy as np
 
+from . import legacy_omniscan
 from .writer import SessionPayload, SetPayload
 
 MANIFEST_VERSION = 2
@@ -111,6 +115,8 @@ def build_manifest(payload: SessionPayload, mask_refs: Optional[dict] = None) ->
     ``sha256`` values, which ``write_zip`` fills as it reads the bytes."""
     mask_refs = mask_refs or {}
     _check_namespaces(payload.session_metadata, "session_metadata")
+    for sp in payload.sets:
+        _check_namespaces(sp.metadata, f"set {sp.set_uid} metadata")
     sample = None
     if payload.sample_clinical_name is not None:
         metadata = {**(payload.sample_metadata or {}), **payload.sample_metadata_attrs}
@@ -192,7 +198,7 @@ def _set_entry(sp: SetPayload, mask_refs: dict) -> dict:
         "stage_position": sp.stage_position,
         "sample_name": sp.sample_name,
         "created_at": sp.created_at,
-        "metadata": {**sp.metadata, **sp.metadata_attrs},
+        "metadata": sp.metadata,
         "poni_text": sp.poni_text,
         "raw_sha256": _array_sha256(sp.raw),
         "measurements": [
@@ -248,15 +254,36 @@ def check(manifest: dict) -> None:
 def upgrade(manifest: dict) -> dict:
     """Bring a ``check``ed manifest to the current version's shape, in place,
     and return it. ``manifest_version`` is left as it arrived: it records what
-    was sent, not what the dict now holds.
-
-    v1 → v2: v1 carried the session form's values flat in ``session.metadata``;
-    v2 holds namespaces, the form's under ``form``."""
+    was sent, not what the dict now holds. The v1 steps are their own
+    functions, so rows already stored from a v1 manifest can be brought to the
+    same shape by the same code."""
     session = manifest["session"]
-    if manifest["manifest_version"] == 1 and session.get("metadata"):
-        session["metadata"] = {"form": session["metadata"]}
+    if manifest["manifest_version"] == 1:
+        session["metadata"] = upgrade_v1_session_metadata(session.get("metadata"))
+        producer = manifest["producer"].get("software")
+        for sp in manifest["sets"]:
+            sp["metadata"] = upgrade_v1_set_metadata(sp.get("metadata"), sp, producer)
     _check_namespaces(session.get("metadata"), "manifest session.metadata")
+    for sp in manifest["sets"]:
+        _check_namespaces(sp.get("metadata"), f"manifest set {sp['set_uid']} metadata")
     return manifest
+
+
+def upgrade_v1_session_metadata(metadata: Optional[dict]) -> Optional[dict]:
+    """v1 session metadata in v2's shape: the session form's values, flat in
+    v1, go under ``form``."""
+    return {"form": metadata} if metadata else metadata
+
+
+def upgrade_v1_set_metadata(metadata: Optional[dict], set_entry: dict,
+                            producer: Optional[str]) -> dict:
+    """v1 set metadata in v2's shape. ``set_entry`` is the set's manifest
+    entry (or the same fields from a stored row). EoScan's v1 sets were
+    already namespaces and pass unchanged; the legacy backfill's are
+    ``legacy_omniscan``'s."""
+    if producer == legacy_omniscan.PRODUCER:
+        return legacy_omniscan.upgrade_v1_set_metadata(metadata, set_entry)
+    return dict(metadata or {})
 
 
 def members(manifest: dict) -> List[Tuple[str, Optional[str]]]:
@@ -288,7 +315,7 @@ def _check_namespaces(metadata: Optional[dict], where: str) -> None:
         if not isinstance(value, dict):
             raise ManifestError(
                 f"{where}[{key!r}] is not a namespace (got {type(value).__name__}); "
-                f"form values go under ['form']")
+                f"every value belongs under its writer's namespace")
 
 
 def _measurement_dir(set_uid: str, measurement_uid: str) -> str:
