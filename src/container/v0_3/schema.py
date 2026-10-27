@@ -105,6 +105,7 @@ ATTR_STATUS = "status"
 ATTR_OPERATOR_USERNAME = "operator_username"
 ATTR_STARTED_AT = "started_at"
 ATTR_COMPLETED_AT = "completed_at"
+ATTR_SAMPLE_STATUS = "sample_status"
 ATTR_MACHINE_SERIAL = "machine_serial"
 ATTR_MACHINE_TYPE = "machine_type"
 ATTR_MACHINE_LOCATION = "machine_location"
@@ -116,8 +117,9 @@ ATTR_PATIENT_CLINICAL_NAME = "patient_clinical_name"
 ATTR_SAMPLE_TYPE_NAME = "sample_type_name"
 
 DS_PROTOCOL_SNAPSHOT = "protocol_snapshot"
-# producer-declared per-session metadata (e.g. suspicious-lesion position) as a
-# JSON values dict, plus the forms it was collected against — the session form
+# producer-declared per-session metadata as a JSON dict of namespaces (the
+# session form's values under "form", e.g. suspicious-lesion position; the
+# cloud's under "curation"), plus the forms it was collected against — the session form
 # and per-measurement-type set forms, {"session": [...], "sets": {...}}, whose
 # values ride in each set's metadata — so a reader can label values even after
 # the producer's forms have changed.
@@ -234,9 +236,9 @@ FIELD_BEAM_ENERGY = "beam_energy"
 FIELD_SAMPLE_NAME = "name"
 FIELD_PATIENT_NAME = "patient_name"
 FIELD_SAMPLE_TYPE = "sample_type"
-# optional free-form descriptive sample/patient metadata (JSON), e.g. clinical
-# attributes. EoScan's live export leaves it unset; backfill producers populate it.
-DS_SAMPLE_METADATA = "metadata"
+FIELD_PATIENT_DATE_OF_BIRTH = "patient_date_of_birth"
+FIELD_PATIENT_SEX = "patient_sex"
+FIELD_PATIENT_RACE_ETHNICITY = "patient_race_ethnicity"
 # set geometry + per-set acquisition (source settings snapshot for this set)
 FIELD_DISTANCE = "distance"
 FIELD_VOLTAGE = "voltage"

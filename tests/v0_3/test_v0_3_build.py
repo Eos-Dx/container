@@ -133,21 +133,22 @@ def test_metadata_payload(tmp_path):
         assert f["/session/sample/sample_type"][()].decode() == "tissue"
 
 
-def test_sample_metadata_optional_and_roundtrips(tmp_path):
-    # absent by default — no metadata dataset under NXsample, accessor returns None
+def test_patient_facts_and_sample_status_are_typed_identity(tmp_path):
+    # absent by default — no field written, none in the flat view
     _, _, path = build(tmp_path)
-    c = open_container(path)
-    assert c.sample_metadata() is None
     with h5py.File(path, "r") as f:
-        assert "metadata" not in f["/session/sample"]
+        assert set(f["/session/sample"]) == {"name", "patient_name", "sample_type"}
+        assert "sample_status" not in f["/session"].attrs
 
-    # populated — round-trips via the parsed accessor, stays out of the flat view
-    clinical = {"age": 66, "birads": "BI-RADS 2 Benign", "grade": "BENIGN"}
-    _, _, path2 = build(tmp_path, sample_metadata=clinical)
-    c2 = open_container(path2)
-    assert c2.sample_metadata() == clinical
-    assert "metadata" not in c2.session_meta()
-    assert c2.session_meta()["name"] == "PAT001-S01"
+    _, _, path2 = build(tmp_path, patient_date_of_birth="1960-02-03", patient_sex="FEMALE",
+                        patient_race_ethnicity="Hispanic/Latino", sample_status="BENIGN")
+    with h5py.File(path2, "r") as f:
+        assert f["/session/sample/patient_race_ethnicity"][()].decode() == "Hispanic/Latino"
+        assert f["/session"].attrs["sample_status"] == "BENIGN"
+    meta = open_container(path2).session_meta()
+    assert (meta["patient_date_of_birth"], meta["patient_sex"], meta["sample_status"]) == \
+        ("1960-02-03", "FEMALE", "BENIGN")
+    assert meta["name"] == "PAT001-S01"
 
 
 def test_session_metadata_optional_and_roundtrips(tmp_path):
@@ -178,20 +179,13 @@ def test_set_metadata_is_one_json_dataset(tmp_path):
     # namespaces and all, in the set's metadata dataset — none become attrs
     s = make_set(metadata={"omniscan": {"position": "P2", "transmission_pct": 10.0,
                                         "provenance": {"era": "v1"}}})
-    _, _, path = build_session_container(
-        make_session(sets=[s], sample_metadata_attrs={"age": 66, "grade": "BENIGN"}),
-        tmp_path)
+    _, _, path = build_session_container(make_session(sets=[s]), tmp_path)
     with h5py.File(path, "r") as f:
         sg = f["/session/sets/set_001_sample_main"]
         assert "position" not in sg.attrs
         assert read_json_dataset(sg, "metadata")["omniscan"]["position"] == "P2"
-        # promoted clinical lands on NXsample; no blob when fully promoted
-        assert f["/session/sample"].attrs["age"] == 66
-        assert "metadata" not in f["/session/sample"]
     c = open_container(path)
     assert c.sets()[0]["metadata"]["omniscan"]["provenance"]["era"] == "v1"
-    assert c.sample_metadata() == {"age": 66, "grade": "BENIGN"}
-    assert "age" not in c.session_meta()   # stays out of the flat identity view
 
 
 def test_physics_scalars_are_fields_with_units(tmp_path):
