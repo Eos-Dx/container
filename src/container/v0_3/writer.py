@@ -157,6 +157,8 @@ class SetPayload:
     stage_position: Optional[float]
     sample_name: Optional[str]
     created_at: str
+    # namespaces, one per writer ({"lrf": {...}, "operator": {...}, ...}) —
+    # one JSON dataset on the set group
     metadata: dict
     processing_config: dict
     measurements: List[MeasurementPayload]
@@ -173,9 +175,6 @@ class SetPayload:
     processing_steps: List[ProcessingStepPayload] = dataclasses.field(default_factory=list)
     poni_text: Optional[str] = None
     preview: Optional[Union[bytes, Path, str]] = None
-    # producer-declared split: keys here become browsable group attrs, ``metadata``
-    # is the JSON blob. The producer owns the partition (no inference).
-    metadata_attrs: dict = dataclasses.field(default_factory=dict)
 
 
 @dataclasses.dataclass
@@ -216,14 +215,6 @@ class SessionPayload:
     sets: List[SetPayload] = dataclasses.field(default_factory=list)
 
 
-# attr names a set group already owns (identity/labels) — a producer-declared
-# metadata_attrs key may not collide with these (would clobber identity).
-_SET_RESERVED = frozenset({
-    S.ATTR_NX_CLASS, S.ATTR_DEFAULT, S.ATTR_SET_PK, S.ATTR_SET_UID,
-    S.ATTR_WORKFLOW_ID, S.ATTR_BATCH_ID, S.ATTR_DETECTOR_SET_ID, S.ATTR_STATUS,
-    S.ATTR_IS_APPROVED, S.ATTR_MEASUREMENT_TYPE_NAME, S.ATTR_MEASUREMENT_TYPE_CATEGORY,
-    S.ATTR_WORKFLOW_KEY, S.ATTR_SAMPLE_NAME, S.ATTR_CREATED_AT_SET,
-})
 # NXsample owns these (nx_class attr + the structural field datasets) — a
 # sample_metadata_attrs key may not shadow them.
 _SAMPLE_RESERVED = frozenset({
@@ -441,8 +432,6 @@ def _write_set(parent, name: str, sp: SetPayload, ds_labels: dict, det_labels: d
         H.write_scalar_dataset(acq, S.FIELD_STAGE_POSITION,
                                sp.stage_position, units=S.UNIT_MM)
 
-    if sp.metadata_attrs:
-        _write_attrs_checked(grp, sp.metadata_attrs, _SET_RESERVED, "metadata_attrs")
     if sp.metadata:
         H.write_json_dataset(grp, S.DS_METADATA, sp.metadata)
 

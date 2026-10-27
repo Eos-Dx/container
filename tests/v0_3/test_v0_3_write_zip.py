@@ -97,12 +97,12 @@ def test_masks_not_shipped_without_source(tmp_path):
     assert m["detector_sets"][0]["detectors"][0]["mask_ref"] is None
 
 
-def test_metadata_attrs_merge_and_numpy_scalars_serialize(tmp_path):
+def test_sample_attrs_merge_and_numpy_scalars_serialize(tmp_path):
     raw = np.arange(6, dtype=np.uint16).reshape(2, 3)
-    s = make_set(raw=raw, metadata_attrs={"position": "P1"}, distance_mm=np.float64(170.5))
+    s = make_set(raw=raw, metadata={"lrf": {"average_mm": np.float64(1.5)}}, distance_mm=np.float64(170.5))
     p = make_session(sets=[s], sample_metadata={"age": np.int64(40)}, sample_metadata_attrs={"side": "Left"})
     _, _, m = build(tmp_path, p)
-    assert m["sets"][0]["metadata"]["position"] == "P1"
+    assert m["sets"][0]["metadata"] == {"lrf": {"average_mm": 1.5}}
     assert m["sets"][0]["distance_mm"] == 170.5
     assert m["sets"][0]["raw_sha256"] == hashlib.sha256(raw.tobytes()).hexdigest()
     assert m["session"]["sample"]["metadata"] == {"age": 40, "side": "Left"}
@@ -127,6 +127,12 @@ def test_session_metadata_rides_on_session_not_sample(tmp_path):
 def test_flat_session_metadata_is_refused(tmp_path):
     # v1's shape (form values at the top level) must not ship under v2
     p = make_session(session_metadata={"suspicious": True})
+    with pytest.raises(ValueError, match="namespace"):
+        build(tmp_path, p)
+
+
+def test_flat_set_metadata_is_refused(tmp_path):
+    p = make_session(sets=[make_set(metadata={"position": "P1"})])
     with pytest.raises(ValueError, match="namespace"):
         build(tmp_path, p)
 
